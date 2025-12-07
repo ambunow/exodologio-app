@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { auth, db } from "../lib/firebase";
 import {
   createUserWithEmailAndPassword,
@@ -8,6 +9,7 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import {
   addDoc,
@@ -411,7 +413,8 @@ export default function HomePage() {
 
   const [busy, setBusy] = useState(false);
   const [authError, setAuthError] = useState("");
-
+  const [authNotice, setAuthNotice] = useState("");
+  
   // missing household fix
   const [fixInvite, setFixInvite] = useState("");
   const [fixError, setFixError] = useState("");
@@ -568,6 +571,7 @@ export default function HomePage() {
   async function handleAuth(e) {
     e.preventDefault();
     setAuthError("");
+    setAuthNotice("");
     setBusy(true);
 
     try {
@@ -610,6 +614,30 @@ export default function HomePage() {
       setBusy(false);
     }
   }
+
+  async function handleForgotPassword() {
+  setAuthError("");
+  setAuthNotice("");
+
+  const mail = (email || "").trim();
+  if (!mail) {
+    setAuthError("Γράψε πρώτα το email σου και μετά πάτα «Ξέχασα τον κωδικό μου».");
+    return;
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, mail);
+    setAuthNotice("Σου στείλαμε email επαναφοράς κωδικού. Έλεγξε και τα Ανεπιθύμητα (Spam).");
+  } catch (e) {
+    const msg =
+      e?.code === "auth/user-not-found"
+        ? "Δεν βρέθηκε χρήστης με αυτό το email."
+        : e?.code === "auth/invalid-email"
+        ? "Το email δεν είναι σωστό."
+        : "Αποτυχία αποστολής email επαναφοράς. Δοκίμασε ξανά.";
+    setAuthError(msg);
+  }
+}
 
   async function handleLogout() {
     await signOut(auth);
@@ -1026,76 +1054,180 @@ export default function HomePage() {
     return `${pm}${bw ? ` • ${bw}` : ""}`.trim();
   }
 
-  function exportCSV() {
-    const rows = filteredTransactions
-      .slice()
-      .reverse()
-      .map((t) => {
-        if (t.type === "income") {
-          const src = t.incomeSource === "Άλλο" ? (t.incomeSourceOther || "") : "Μισθός";
-          return {
-            date: t.date || "",
-            type: "income",
-            amount: t.amount ?? "",
-            income_source: src,
-            income_receipt_method: t.incomeReceiptMethod || t.category || "",
-            expense_payment_method: "",
-            expense_bank_wallet: "",
-            expense_category: "",
-            expense_category_other: "",
-            notes: (t.notes || "").replace(/\n/g, " "),
-          };
-        }
-        const pm = t.expensePaymentMethod || t.paymentMethod || "";
+  function exportXLSX() {
+  const rows = filteredTransactions
+    .slice()
+    .reverse()
+    .map((t) => {
+      if (t.type === "income") {
+        const src =
+          t.incomeSource === "Άλλο" ? (t.incomeSourceOther || "") : "Μισθός";
         return {
           date: t.date || "",
-          type: "expense",
+          type: "income",
           amount: t.amount ?? "",
-          income_source: "",
-          income_receipt_method: "",
-          expense_payment_method: pm,
-          expense_bank_wallet: t.expenseBankWallet || "",
-          expense_category: t.category || "",
-          expense_category_other: t.expenseCategoryOther || "",
+          income_source: src,
+          income_receipt_method: t.incomeReceiptMethod || t.category || "",
+          expense_payment_method: "",
+          expense_bank_wallet: "",
+          expense_category: "",
+          expense_category_other: "",
           notes: (t.notes || "").replace(/\n/g, " "),
         };
-      });
+      }
 
-    const header = [
-      "date",
-      "type",
-      "amount",
-      "income_source",
-      "income_receipt_method",
-      "expense_payment_method",
-      "expense_bank_wallet",
-      "expense_category",
-      "expense_category_other",
-      "notes",
-    ];
+      const pm = t.expensePaymentMethod || t.paymentMethod || "";
+      return {
+        date: t.date || "",
+        type: "expense",
+        amount: t.amount ?? "",
+        income_source: "",
+        income_receipt_method: "",
+        expense_payment_method: pm,
+        expense_bank_wallet: t.expenseBankWallet || "",
+        expense_category: t.category || "",
+        expense_category_other: t.expenseCategoryOther || "",
+        notes: (t.notes || "").replace(/\n/g, " "),
+      };
+    });
 
-    const csv = [
-      header.join(","),
-      ...rows.map((r) =>
-        header
-          .map((k) => {
-            const v = String(r[k] ?? "");
-            return v.includes(",") || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v;
-          })
-          .join(",")
-      ),
-    ].join("\n");
+  const fileTag =
+    filterMode === "range"
+      ? `range_${rangeStart || "x"}_${rangeEnd || "x"}`
+      : selectedMonth;
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const fileTag =
-      filterMode === "range" ? `range_${rangeStart || "x"}_${rangeEnd || "x"}` : selectedMonth;
-    a.href = url;
-    a.download = `exodologio_${fileTag}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const toNum = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // ---------- Σύνοψη ----------
+  const incomeTotal = rows.reduce(
+    (sum, r) => (r.type === "income" ? sum + toNum(r.amount) : sum),
+    0
+  );
+  const expenseTotal = rows.reduce(
+    (sum, r) => (r.type === "expense" ? sum + toNum(r.amount) : sum),
+    0
+  );
+  const net = incomeTotal - expenseTotal;
+
+  // ---------- Κατηγορίες ----------
+  const expenseByCategory = new Map();
+  const incomeBySource = new Map();
+
+  for (const r of rows) {
+    if (r.type === "expense") {
+      const key = (r.expense_category || "").trim() || "Χωρίς κατηγορία";
+      expenseByCategory.set(key, (expenseByCategory.get(key) || 0) + toNum(r.amount));
+    } else if (r.type === "income") {
+      const key = (r.income_source || "").trim() || "Χωρίς πηγή";
+      incomeBySource.set(key, (incomeBySource.get(key) || 0) + toNum(r.amount));
+    }
   }
+
+  const expenseCatRows = Array.from(expenseByCategory.entries())
+    .map(([name, total]) => ({ name, total }))
+    .sort((a, b) => b.total - a.total);
+
+  const incomeSrcRows = Array.from(incomeBySource.entries())
+    .map(([name, total]) => ({ name, total }))
+    .sort((a, b) => b.total - a.total);
+
+  // ---------- Sheet: Κινήσεις (ΠΡΩΤΟ) ----------
+  const greekHeader = [
+    "Ημερομηνία",
+    "Τύπος",
+    "Ποσό (€)",
+    "Πηγή εσόδου",
+    "Τρόπος λήψης (έσοδο)",
+    "Τρόπος πληρωμής (έξοδο)",
+    "Τράπεζα/Πορτοφόλι (έξοδο)",
+    "Κατηγορία εξόδου",
+    "Άλλη κατηγορία εξόδου",
+    "Σχόλια",
+  ];
+
+  const aoaMoves = [
+    greekHeader,
+    ...rows.map((r) => [
+      r.date,
+      r.type === "income" ? "Έσοδο" : "Έξοδο",
+      r.amount === "" ? "" : toNum(r.amount),
+      r.income_source,
+      r.income_receipt_method,
+      r.expense_payment_method,
+      r.expense_bank_wallet,
+      r.expense_category,
+      r.expense_category_other,
+      r.notes,
+    ]),
+  ];
+
+  const wsMoves = XLSX.utils.aoa_to_sheet(aoaMoves);
+
+  // Στήλες (να φαίνονται ωραία)
+  wsMoves["!cols"] = [
+    { wch: 12 }, // Ημερομηνία
+    { wch: 10 }, // Τύπος
+    { wch: 10 }, // Ποσό
+    { wch: 24 }, // Πηγή εσόδου
+    { wch: 22 }, // Τρόπος λήψης (έσοδο)
+    { wch: 22 }, // Τρόπος πληρωμής (έξοδο)
+    { wch: 26 }, // Τράπεζα/Πορτοφόλι (έξοδο)
+    { wch: 20 }, // Κατηγορία εξόδου
+    { wch: 22 }, // Άλλη κατηγορία εξόδου
+    { wch: 45 }, // Σχόλια
+  ];
+
+  // AutoFilter στο header
+  wsMoves["!autofilter"] = { ref: "A1:J1" };
+
+  // (Προαιρετικό) Freeze 1η γραμμή (αν υποστηρίζεται από την έκδοση)
+  wsMoves["!freeze"] = {
+    xSplit: 0,
+    ySplit: 1,
+    topLeftCell: "A2",
+    activePane: "bottomLeft",
+    state: "frozen",
+  };
+
+  // ---------- Sheet: Σύνοψη ----------
+  const wsSummary = XLSX.utils.aoa_to_sheet([
+    ["Περίοδος", fileTag],
+    ["Σύνολο Εσόδων (€)", incomeTotal],
+    ["Σύνολο Εξόδων (€)", expenseTotal],
+    ["Υπόλοιπο (Έσοδα - Έξοδα) (€)", net],
+    [],
+    ["Πλήθος κινήσεων", rows.length],
+    ["Πλήθος εσόδων", rows.filter((r) => r.type === "income").length],
+    ["Πλήθος εξόδων", rows.filter((r) => r.type === "expense").length],
+  ]);
+  wsSummary["!cols"] = [{ wch: 34 }, { wch: 22 }];
+
+  // ---------- Sheet: Κατηγορίες ----------
+  const wsCategories = XLSX.utils.aoa_to_sheet([
+    ["Περίοδος", fileTag],
+    [],
+    ["Έξοδα ανά Κατηγορία", ""],
+    ["Κατηγορία", "Σύνολο (€)"],
+    ...expenseCatRows.map((x) => [x.name, x.total]),
+    [],
+    ["Έσοδα ανά Πηγή", ""],
+    ["Πηγή", "Σύνολο (€)"],
+    ...incomeSrcRows.map((x) => [x.name, x.total]),
+  ]);
+  wsCategories["!cols"] = [{ wch: 34 }, { wch: 16 }];
+
+  // ---------- Workbook (σειρά tabs: Κινήσεις → Σύνοψη → Κατηγορίες) ----------
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsMoves, "Κινήσεις");
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Σύνοψη");
+  XLSX.utils.book_append_sheet(wb, wsCategories, "Κατηγορίες");
+
+  XLSX.writeFile(wb, `exodologio_${fileTag}.xlsx`);
+}
+
 
   const usingRegister = authMode === "register";
 
@@ -1233,6 +1365,22 @@ export default function HomePage() {
               {authError && (
                 <div className="text-sm text-rose-700 md:col-span-2">{authError}</div>
               )}
+
+              {authNotice && (
+  <div className="text-sm text-emerald-700 md:col-span-2">{authNotice}</div>
+)}
+
+{authMode === "login" && (
+  <div className="md:col-span-2 flex items-center justify-between">
+    <button
+      type="button"
+      onClick={handleForgotPassword}
+      className="text-sm text-slate-600 hover:text-slate-900 underline underline-offset-4"
+    >
+      Ξέχασα τον κωδικό μου
+    </button>
+  </div>
+)}
 
               <div className="md:col-span-2 flex justify-end">
                 <button
@@ -1423,10 +1571,10 @@ export default function HomePage() {
                     </button>
 
                     <button
-                      onClick={exportCSV}
+                      onClick={exportXLSX}
                       className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
                     >
-                      Export CSV
+                      Export Excel
                     </button>
                   </div>
 

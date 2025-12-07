@@ -9,12 +9,13 @@
     "next": "^16.0.7",
     "next-pwa": "^5.6.0",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "xlsx": "^0.18.5"
   },
   "scripts": {
-  "dev": "next dev --webpack -p 3003",
-  "build": "next build --webpack",
-  "start": "next start --webpack",
-  "lint": "next lint"
-}
+    "dev": "next dev --webpack -p 3004",
+    "build": "next build --webpack",
+    "start": "next start --webpack",
+    "lint": "next lint"
+  }
 }
