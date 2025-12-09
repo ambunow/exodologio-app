@@ -167,6 +167,38 @@ function inRange(dateStr, start, end) {
   return true;
 }
 
+/** =====================
+ *  UI helpers
+ * ===================== */
+function cx(...classes) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const UI = {
+  card: "rounded-2xl bg-white shadow-sm border border-slate-200",
+  cardPad: "p-4 sm:p-6",
+  sectionTitle: "text-lg font-semibold text-slate-900",
+  label: "text-sm font-medium text-slate-700",
+  input:
+    "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 " +
+    "placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400",
+  select:
+    "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 " +
+    "focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400",
+  btnPrimary:
+    "rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60",
+  btnSecondary:
+    "rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60",
+  btnGhost:
+    "rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60",
+  hint: "text-xs text-slate-500",
+  error: "text-sm text-rose-700",
+  success: "text-sm text-emerald-700",
+  badge:
+    "inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700",
+  divider: "h-px w-full bg-slate-200",
+};
+
 /** =========================
  *  PWA Install bar
  *  ========================= */
@@ -268,16 +300,89 @@ function EyeButton({ shown, onClick }) {
   );
 }
 
+// =====================
+//  App background (€ pattern)
+// =====================
+const EURO_PATTERN = [
+  { x: 6, y: 10, s: 26, o: 0.08, r: -10 },
+  { x: 18, y: 22, s: 18, o: 0.06, r: 12 },
+  { x: 32, y: 14, s: 40, o: 0.07, r: 18 },
+  { x: 44, y: 28, s: 22, o: 0.06, r: -18 },
+  { x: 58, y: 16, s: 28, o: 0.07, r: 8 },
+  { x: 70, y: 26, s: 46, o: 0.06, r: -8 },
+  { x: 84, y: 12, s: 20, o: 0.05, r: 10 },
+  { x: 92, y: 30, s: 30, o: 0.06, r: -14 },
+
+  { x: 8, y: 52, s: 44, o: 0.05, r: 16 },
+  { x: 20, y: 62, s: 22, o: 0.06, r: -8 },
+  { x: 34, y: 54, s: 18, o: 0.05, r: 10 },
+  { x: 48, y: 66, s: 36, o: 0.06, r: -18 },
+  { x: 60, y: 56, s: 24, o: 0.06, r: 12 },
+  { x: 74, y: 64, s: 18, o: 0.05, r: -6 },
+  { x: 88, y: 54, s: 40, o: 0.06, r: 18 },
+  { x: 96, y: 68, s: 22, o: 0.05, r: -12 },
+
+  { x: 10, y: 86, s: 20, o: 0.05, r: -12 },
+  { x: 22, y: 80, s: 34, o: 0.06, r: 14 },
+  { x: 36, y: 90, s: 18, o: 0.05, r: -6 },
+  { x: 50, y: 82, s: 46, o: 0.06, r: 10 },
+  { x: 64, y: 92, s: 24, o: 0.05, r: -16 },
+  { x: 76, y: 84, s: 18, o: 0.05, r: 8 },
+  { x: 90, y: 90, s: 38, o: 0.06, r: -10 },
+];
+
+function EuroPatternBg() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
+      {/* soft color blobs */}
+      <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-emerald-300/25 blur-3xl" />
+      <div className="absolute -bottom-44 -right-40 h-[520px] w-[520px] rounded-full bg-rose-300/20 blur-3xl" />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 h-[520px] w-[520px] rounded-full bg-sky-300/15 blur-3xl" />
+
+      {/* € pattern */}
+      <div className="absolute inset-0">
+        {EURO_PATTERN.map((p, i) => (
+          <span
+            key={i}
+            className="absolute font-black text-slate-900 select-none"
+            style={{
+              left: `${p.x}%`,
+              top: `${p.y}%`,
+              fontSize: `${p.s}px`,
+              opacity: p.o,
+              transform: `rotate(${p.r}deg)`,
+            }}
+          >
+            €
+          </span>
+        ))}
+      </div>
+
+      {/* subtle vignette */}
+      <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/20 to-white/70" />
+    </div>
+  );
+}
+
 /** =========================
  *  Firestore helpers (households)
  *  ========================= */
 async function ensureMembership({ uid, householdId, displayName }) {
   const memberRef = doc(db, "households", householdId, "members", uid);
-  await setDoc(
-    memberRef,
-    { uid, displayName: displayName || null, joinedAt: serverTimestamp() },
-    { merge: true }
-  );
+
+  // Create-only: αν υπάρχει ήδη member doc, δεν κάνουμε update (για να μην χτυπάει τα rules).
+  try {
+    const snap = await getDoc(memberRef);
+    if (snap.exists()) return;
+  } catch (e) {
+    // Αν δεν έχει δικαίωμα read (π.χ. πριν γίνει μέλος), προχωράμε σε create.
+  }
+
+  await setDoc(memberRef, {
+    uid,
+    displayName: displayName || null,
+    joinedAt: serverTimestamp(),
+  });
 }
 
 async function loadUserHouseholdId(uid) {
@@ -320,6 +425,7 @@ async function createHouseholdWithInvite({ uid, displayName }) {
     finalCode = normalizeInviteCode(`home-${randomSuffix(6)}`.slice(0, 32));
   }
 
+  // 1) Create household
   const h = await addDoc(collection(db, "households"), {
     createdAt: serverTimestamp(),
     createdBy: uid,
@@ -329,7 +435,13 @@ async function createHouseholdWithInvite({ uid, displayName }) {
     inviteUpdatedBy: uid,
   });
 
-  // default settings per household
+  // 2) FIRST: set membership (για να περνάνε τα rules στα subcollections)
+  await ensureMembership({ uid, householdId: h.id, displayName });
+
+  // 3) Store householdId on user (ώστε να μη χρειάζεται να το ξαναγράφει ποτέ)
+  await setUserHouseholdId(uid, h.id);
+
+  // 4) Now safe: default settings per household
   await setDoc(
     doc(db, "households", h.id, "meta", "settings"),
     {
@@ -340,17 +452,16 @@ async function createHouseholdWithInvite({ uid, displayName }) {
     { merge: true }
   );
 
+  // 5) Create invite code mapping (rules: μόνο owner)
   await setDoc(doc(db, "inviteCodes", finalCode), {
     householdId: h.id,
     createdByUid: uid,
     createdAt: serverTimestamp(),
   });
 
-  await setUserHouseholdId(uid, h.id);
-  await ensureMembership({ uid, householdId: h.id, displayName });
-
   return { householdId: h.id, inviteCode: finalCode };
 }
+
 
 async function loadHouseholdSettings(householdId) {
   const ref = doc(db, "households", householdId, "meta", "settings");
@@ -482,11 +593,16 @@ export default function HomePage() {
       if (!u) return;
 
       const hid = await loadUserHouseholdId(u.uid);
-      setHouseholdId(hid || null);
 
-      if (hid) {
-        await ensureMembership({ uid: u.uid, householdId: hid, displayName: u.displayName });
-      }
+if (hid) {
+  try {
+    await ensureMembership({ uid: u.uid, householdId: hid, displayName: u.displayName });
+  } catch {
+    // δεν μπλοκάρουμε το login αν κάτι πάει στραβά εδώ
+  }
+}
+
+setHouseholdId(hid || null);
     });
 
     return () => unsub();
@@ -1232,16 +1348,35 @@ export default function HomePage() {
   const usingRegister = authMode === "register";
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <InstallPWABar />
+  <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-emerald-50/40 to-rose-50/40 text-slate-900">
+    <EuroPatternBg />
+    <InstallPWABar />
 
-      <div className="mx-auto max-w-5xl px-4 py-5 sm:py-8 pb-24">
-        <div className="flex flex-col gap-1 mb-5">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Exodologio</h1>
-          <p className="text-sm text-slate-600">
-            Κοινό έσοδα–έξοδα για εσένα και την οικογένεια, sync σε όλες τις συσκευές.
-          </p>
+      <div className="relative mx-auto max-w-5xl px-4 py-5 sm:py-8 pb-24">
+  <header className="mb-6 rounded-3xl border border-slate-200 bg-white/70 backdrop-blur shadow-sm">
+    <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3">
+        <div className="h-12 w-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-xl font-black shadow">
+          €
         </div>
+        <div>
+          <div className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+            Exodologio
+          </div>
+          <div className="text-sm text-slate-600">
+            Κοινό έσοδα–έξοδα για εσένα και την οικογένεια, sync σε όλες τις συσκευές.
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={UI.badge}>PWA • Install στο κινητό</span>
+        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">
+          Cloud Sync
+        </span>
+      </div>
+    </div>
+  </header>
 
         {/* AUTH */}
         {!user ? (
@@ -1641,263 +1776,333 @@ export default function HomePage() {
             </section>
 
             {/* NEW / EDIT TX */}
-            <section className="mb-5 sm:mb-8 rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <h2 className="text-lg font-semibold">{editingId ? "Επεξεργασία κίνησης" : "Νέα κίνηση"}</h2>
-                {editingId && (
-                  <button onClick={resetForm} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold">
-                    Ακύρωση edit
-                  </button>
-                )}
+<section className="mt-8 mb-10 rounded-3xl overflow-hidden border border-slate-200 bg-white shadow-md">
+  {/* HEADER */}
+  <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="flex items-center gap-3">
+      <div className="h-11 w-11 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-lg font-bold">
+        €
+      </div>
+
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg sm:text-xl font-semibold">
+            {editingId ? "Επεξεργασία κίνησης" : "Νέα κίνηση"}
+          </h2>
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold border ${
+              type === "income"
+                ? "border-emerald-300 bg-emerald-500/20 text-emerald-100"
+                : "border-rose-300 bg-rose-500/20 text-rose-100"
+            }`}
+          >
+            {type === "income" ? "Έσοδο" : "Έξοδο"}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-slate-200">
+          Συμπλήρωσε τα στοιχεία της κίνησης και πάτα{" "}
+          {editingId ? "«Αποθήκευση αλλαγών»" : "«Αποθήκευση κίνησης»"}.
+        </p>
+      </div>
+    </div>
+
+    {editingId && (
+      <button
+        type="button"
+        onClick={resetForm}
+        className="self-start md:self-auto rounded-2xl border border-white/40 bg-white/10 px-3 py-2 text-xs font-semibold text-slate-50 hover:bg-white/15 transition"
+      >
+        Ακύρωση edit
+      </button>
+    )}
+  </div>
+
+  {/* BODY */}
+  <div className="p-4 sm:p-6 bg-slate-50/60">
+    <form
+      onSubmit={handleSaveTransaction}
+      className="grid grid-cols-1 gap-4 md:grid-cols-2"
+    >
+      {/* Ημερομηνία */}
+      <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+        <label className="text-sm font-medium text-slate-700">
+          Ημερομηνία
+        </label>
+        <input
+          type="date"
+          className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
+
+      {/* Τύπος */}
+      <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+        <label className="text-sm font-medium text-slate-700">Τύπος</label>
+        <div className="grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+          <button
+            type="button"
+            onClick={() => setType("income")}
+            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+              type === "income"
+                ? "bg-white shadow text-emerald-700"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Έσοδο
+          </button>
+          <button
+            type="button"
+            onClick={() => setType("expense")}
+            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+              type === "expense"
+                ? "bg-white shadow text-rose-700"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Έξοδο
+          </button>
+        </div>
+      </div>
+
+      {/* Ποσό */}
+      <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+        <label className="text-sm font-medium text-slate-700">
+          Ποσό (€) <span className="text-rose-600">*</span>
+        </label>
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+            €
+          </span>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            className="w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </div>
+        <p className="text-[11px] text-slate-500">Υποχρεωτικό πεδίο.</p>
+      </div>
+
+      {/* INCOME / EXPENSE δυναμικό κομμάτι */}
+      {type === "income" ? (
+        <>
+          {/* Πηγή εσόδου */}
+          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">
+              Πηγή εσόδου
+            </label>
+            <select
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              value={incomeSource}
+              onChange={(e) => setIncomeSource(e.target.value)}
+            >
+              <option value="Μισθός">Μισθός</option>
+              <option value="Άλλο">Άλλο</option>
+            </select>
+
+            {incomeSource === "Άλλο" && (
+              <input
+                className="mt-2 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                placeholder="Γράψε την πηγή (π.χ. Ενοίκιο, Bonus κτλ.)"
+                value={incomeSourceOther}
+                onChange={(e) => setIncomeSourceOther(e.target.value)}
+              />
+            )}
+          </div>
+
+          {/* Τρόπος λήψης εσόδου */}
+          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">
+              Τρόπος λήψης εσόδου
+            </label>
+            <select
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              value={incomeReceiptMethod}
+              onChange={(e) => setIncomeReceiptMethod(e.target.value)}
+            >
+              {bankWallets.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setAddBankWalletOpen((v) => !v)}
+              className="mt-2 inline-flex w-fit items-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              + Πρόσθεσε τράπεζα / wallet
+            </button>
+
+            {addBankWalletOpen && (
+              <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                <input
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                  placeholder='π.χ. "Alpha Bank", "Μετρητά στο χέρι", "Viva Wallet"'
+                  value={newBankWallet}
+                  onChange={(e) => setNewBankWallet(e.target.value)}
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={handleAddBankWallet}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {busy ? "..." : "Αποθήκευση"}
+                </button>
               </div>
+            )}
 
-              <form onSubmit={handleSaveTransaction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium">Ημερομηνία</label>
-                  <input
-                    type="date"
-                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                  />
-                </div>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Αποθηκεύεται μόνο για το συγκεκριμένο νοικοκυριό.
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Κατηγορία */}
+          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">
+              Κατηγορία
+            </label>
+            <select
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              value={expenseCategory}
+              onChange={(e) => setExpenseCategory(e.target.value)}
+            >
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium">Τύπος</label>
-                  <div className="flex gap-2">
+            {expenseCategory === "Άλλα" && (
+              <input
+                className="mt-2 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                placeholder="Γράψε τι είναι το “Άλλα” (π.χ. Δώρο, Σέρβις κτλ.)"
+                value={expenseCategoryOther}
+                onChange={(e) => setExpenseCategoryOther(e.target.value)}
+              />
+            )}
+          </div>
+
+          {/* Τρόπος πληρωμής + τράπεζα */}
+          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">
+              Τρόπος πληρωμής
+            </label>
+            <select
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              value={expensePaymentMethod}
+              onChange={(e) => setExpensePaymentMethod(e.target.value)}
+            >
+              {EXPENSE_PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+
+            {expenseNeedsBank && (
+              <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                <label className="text-sm font-medium text-slate-700">
+                  Τράπεζα / Wallet
+                </label>
+                <select
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                  value={expenseBankWallet}
+                  onChange={(e) => setExpenseBankWallet(e.target.value)}
+                >
+                  {bankWallets.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setAddBankWalletOpen((v) => !v)}
+                  className="mt-2 inline-flex w-fit items-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  + Πρόσθεσε τράπεζα / wallet
+                </button>
+
+                {addBankWalletOpen && (
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                    <input
+                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                      placeholder='π.χ. "Viva Wallet", "Wise" κτλ.'
+                      value={newBankWallet}
+                      onChange={(e) => setNewBankWallet(e.target.value)}
+                    />
                     <button
                       type="button"
-                      onClick={() => setType("income")}
-                      className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
-                        type === "income"
-                          ? "border-emerald-500 bg-emerald-50 text-emerald-800"
-                          : "border-slate-300 bg-white text-slate-700"
-                      }`}
+                      disabled={busy}
+                      onClick={handleAddBankWallet}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                     >
-                      Έσοδο
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setType("expense")}
-                      className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
-                        type === "expense"
-                          ? "border-rose-500 bg-rose-50 text-rose-800"
-                          : "border-slate-300 bg-white text-slate-700"
-                      }`}
-                    >
-                      Έξοδο
+                      {busy ? "..." : "Αποθήκευση"}
                     </button>
                   </div>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium">Ποσό (€)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                  />
-                </div>
-
-                {/* Dynamic: Income vs Expense */}
-                {type === "income" ? (
-                  <>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium">Πηγή εσόδου</label>
-                      <select
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                        value={incomeSource}
-                        onChange={(e) => setIncomeSource(e.target.value)}
-                      >
-                        <option value="Μισθός">Μισθός</option>
-                        <option value="Άλλο">Άλλο</option>
-                      </select>
-
-                      {incomeSource === "Άλλο" ? (
-                        <input
-                          className="mt-2 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                          placeholder="Γράψε την πηγή εσόδου (π.χ. Ενοίκιο, Bonus, κτλ.)"
-                          value={incomeSourceOther}
-                          onChange={(e) => setIncomeSourceOther(e.target.value)}
-                        />
-                      ) : null}
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium">Τρόπος λήψης εσόδου</label>
-                      <select
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                        value={incomeReceiptMethod}
-                        onChange={(e) => setIncomeReceiptMethod(e.target.value)}
-                      >
-                        {bankWallets.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-
-                      <div className="mt-2 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setAddBankWalletOpen((v) => !v)}
-                          className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold"
-                        >
-                          Πρόσθεσε τράπεζα/wallet ή τρόπο λήψης εσόδου
-                        </button>
-                      </div>
-
-                      {addBankWalletOpen && (
-                        <div className="mt-2 flex flex-col sm:flex-row gap-2">
-                          <input
-                            className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                            placeholder='π.χ. "Alpha Bank", "Μετρητά στο χέρι", "Viva Wallet"'
-                            value={newBankWallet}
-                            onChange={(e) => setNewBankWallet(e.target.value)}
-                          />
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={handleAddBankWallet}
-                            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                          >
-                            {busy ? "..." : "Αποθήκευση"}
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="text-[11px] text-slate-500 mt-1">
-                        Αυτές οι επιλογές αποθηκεύονται μόνο για το συγκεκριμένο νοικοκυριό.
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium">Κατηγορία</label>
-                      <select
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                        value={expenseCategory}
-                        onChange={(e) => setExpenseCategory(e.target.value)}
-                      >
-                        {EXPENSE_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-
-                      {expenseCategory === "Άλλα" ? (
-                        <input
-                          className="mt-2 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                          placeholder="Γράψε τι είναι το “Άλλα” (π.χ. Δώρο, Σέρβις, κτλ.)"
-                          value={expenseCategoryOther}
-                          onChange={(e) => setExpenseCategoryOther(e.target.value)}
-                        />
-                      ) : null}
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium">Τρόπος πληρωμής</label>
-                      <select
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                        value={expensePaymentMethod}
-                        onChange={(e) => setExpensePaymentMethod(e.target.value)}
-                      >
-                        {EXPENSE_PAYMENT_METHODS.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-
-                      {expenseNeedsBank ? (
-                        <div className="mt-2 flex flex-col gap-1">
-                          <label className="text-sm font-medium">Τράπεζα / Wallet</label>
-                          <select
-                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                            value={expenseBankWallet}
-                            onChange={(e) => setExpenseBankWallet(e.target.value)}
-                          >
-                            {bankWallets.map((b) => (
-                              <option key={b} value={b}>
-                                {b}
-                              </option>
-                            ))}
-                          </select>
-
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setAddBankWalletOpen((v) => !v)}
-                              className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold"
-                            >
-                              Πρόσθεσε τράπεζα/wallet
-                            </button>
-                          </div>
-
-                          {addBankWalletOpen && (
-                            <div className="mt-2 flex flex-col sm:flex-row gap-2">
-                              <input
-                                className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                                placeholder='π.χ. "Viva Wallet", "Wise", κτλ.'
-                                value={newBankWallet}
-                                onChange={(e) => setNewBankWallet(e.target.value)}
-                              />
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={handleAddBankWallet}
-                                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                              >
-                                {busy ? "..." : "Αποθήκευση"}
-                              </button>
-                            </div>
-                          )}
-
-                          <div className="text-[11px] text-slate-500 mt-1">
-                            Αυτές οι επιλογές αποθηκεύονται μόνο για το συγκεκριμένο νοικοκυριό.
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </>
                 )}
 
-                <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-sm font-medium">Σχόλια (προαιρετικό)</label>
-                  <textarea
-                    rows={2}
-                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="π.χ. ΔΕΗ Νοεμβρίου, σχολικά είδη κτλ."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Αποθηκεύεται μόνο για το συγκεκριμένο νοικοκυριό.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
-                <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold"
-                  >
-                    Καθαρισμός
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  >
-                    {busy ? "..." : editingId ? "Αποθήκευση αλλαγών" : "Αποθήκευση κίνησης"}
-                  </button>
-                </div>
-              </form>
-            </section>
+      {/* Σχόλια */}
+      <div className="md:col-span-2 rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+        <label className="text-sm font-medium text-slate-700">
+          Σχόλια (προαιρετικό)
+        </label>
+        <textarea
+          rows={2}
+          className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          placeholder="π.χ. ΔΕΗ Νοεμβρίου, σχολικά είδη κτλ."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+
+      {/* Κουμπιά */}
+      <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-2 pt-1">
+        <button
+          type="button"
+          onClick={resetForm}
+          className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Καθαρισμός
+        </button>
+        <button
+          type="submit"
+          disabled={busy}
+          className={`rounded-2xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 transition ${
+            type === "income"
+              ? "bg-emerald-600 hover:bg-emerald-700"
+              : "bg-slate-900 hover:bg-slate-800"
+          }`}
+        >
+          {busy ? "..." : editingId ? "Αποθήκευση αλλαγών" : "Αποθήκευση κίνησης"}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+
+
 
             {/* LIST */}
             <section className="mb-8 rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
