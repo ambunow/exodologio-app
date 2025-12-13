@@ -1219,7 +1219,8 @@ setHouseholdId(hid || null);
   }
 
   function txMethodLine(t) {
-  const who = memberLabelFromState(t.memberUid || t.createdByUid || "");
+  const enteredBy = memberLabelFromState(t.createdByUid || t.memberUid || "");
+const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
 
   if (t.type === "income") {
     const src =
@@ -1228,7 +1229,9 @@ setHouseholdId(hid || null);
         : "Μισθός";
 
     const receipt = t.incomeReceiptMethod || t.category || "";
-    return `Πηγή: ${src}${receipt ? ` • Λήψη: ${receipt}` : ""}${who ? ` • Μέλος: ${who}` : ""}`.trim();
+    return `Πηγή: ${src}${receipt ? ` • Λήψη: ${receipt}` : ""}${
+      paidBy ? ` • Μέλος: ${paidBy}` : ""
+    }${enteredBy ? ` • Καταχώρηση: ${enteredBy}` : ""}`.trim();
   }
 
   const pm = t.expensePaymentMethod || t.paymentMethod || "";
@@ -1236,7 +1239,9 @@ setHouseholdId(hid || null);
     pm === "Χρεωστική κάρτα" || pm === "Πιστωτική κάρτα" || pm === "Λογαριασμός Τράπεζας";
   const bw = needsBank ? (t.expenseBankWallet || "") : "";
 
-  return `${pm}${bw ? ` • ${bw}` : ""}${who ? ` • Μέλος: ${who}` : ""}`.trim();
+  return `${pm}${bw ? ` • ${bw}` : ""}${paidBy ? ` • Πληρωμή: ${paidBy}` : ""}${
+    enteredBy ? ` • Καταχώρηση: ${enteredBy}` : ""
+  }`.trim();
 }
 
   function exportXLSX() {
