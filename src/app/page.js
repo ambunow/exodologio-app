@@ -367,20 +367,18 @@ function EuroPatternBg() {
 /** =========================
  *  Firestore helpers (households)
  *  ========================= */
-async function ensureMembership({ uid, householdId, displayName }) {
+async function ensureMembership({ uid, householdId, displayName, email }) {
   const memberRef = doc(db, "households", householdId, "members", uid);
 
-  // Create-only: αν υπάρχει ήδη member doc, δεν κάνουμε update (για να μην χτυπάει τα rules).
-  try {
-    const snap = await getDoc(memberRef);
-    if (snap.exists()) return;
-  } catch (e) {
-    // Αν δεν έχει δικαίωμα read (π.χ. πριν γίνει μέλος), προχωράμε σε create.
-  }
+  // IMPORTANT: Με τους rules σου, ο απλός χρήστης ΔΕΝ επιτρέπεται να κάνει update στο members doc.
+  // Άρα: δημιουργούμε μόνο αν ΔΕΝ υπάρχει. Αν υπάρχει, δεν πειράζουμε τίποτα.
+  const existing = await getDoc(memberRef);
+  if (existing.exists()) return;
 
   await setDoc(memberRef, {
     uid,
     displayName: displayName || null,
+    email: email || null,
     joinedAt: serverTimestamp(),
   });
 }
@@ -436,7 +434,7 @@ async function createHouseholdWithInvite({ uid, displayName }) {
   });
 
   // 2) FIRST: set membership (για να περνάνε τα rules στα subcollections)
-  await ensureMembership({ uid, householdId: h.id, displayName });
+  await ensureMembership({ uid, householdId: h.id, displayName, email: null });
 
   // 3) Store householdId on user (ώστε να μη χρειάζεται να το ξαναγράφει ποτέ)
   await setUserHouseholdId(uid, h.id);
@@ -508,6 +506,10 @@ export default function HomePage() {
 
   // household settings (per household)
   const [bankWallets, setBankWallets] = useState(DEFAULT_BANK_WALLETS);
+
+  // members (per household) for dropdown
+  const [members, setMembers] = useState([]);
+  const [txMemberUid, setTxMemberUid] = useState("");
 
   // auth
   const [authMode, setAuthMode] = useState("login"); // login | register
@@ -596,7 +598,12 @@ export default function HomePage() {
 
 if (hid) {
   try {
-    await ensureMembership({ uid: u.uid, householdId: hid, displayName: u.displayName });
+    await ensureMembership({
+          uid: u.uid,
+          householdId: hid,
+          displayName: u.displayName,
+          email: u.email,
+        });
   } catch {
     // δεν μπλοκάρουμε το login αν κάτι πάει στραβά εδώ
   }
@@ -638,6 +645,27 @@ setHouseholdId(hid || null);
     })();
   }, [user, householdId]);
 
+  // realtime household members (for dropdown)
+  useEffect(() => {
+    if (!user || !householdId) return;
+
+    const q = query(collection(db, "households", householdId, "members"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setMembers(list);
+
+        // default selection: current user
+        if (!txMemberUid) setTxMemberUid(user.uid);
+      },
+      (err) => console.error("members onSnapshot error:", err)
+    );
+
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, householdId]);
+
   // realtime transactions
   useEffect(() => {
     if (!user || !householdId) return;
@@ -670,6 +698,8 @@ setHouseholdId(hid || null);
     setIncomeSource("Μισθός");
     setIncomeSourceOther("");
     setIncomeReceiptMethod(bankWallets[0] || "Alpha Bank");
+
+    setTxMemberUid(user?.uid || "");
 
     setNotes("");
   }
@@ -715,7 +745,12 @@ setHouseholdId(hid || null);
         if (!hid) throw new Error("Το Invite code δεν βρέθηκε.");
 
         await setUserHouseholdId(cred.user.uid, hid);
-        await ensureMembership({ uid: cred.user.uid, householdId: hid, displayName: name });
+        await ensureMembership({
+          uid: cred.user.uid,
+          householdId: hid,
+          displayName: name,
+          email: cred.user.email,
+        });
         setHouseholdId(hid);
       } else {
         const { householdId: hid } = await createHouseholdWithInvite({
@@ -802,7 +837,12 @@ setHouseholdId(hid || null);
       if (!hid) throw new Error("Το Invite code δεν βρέθηκε.");
 
       await setUserHouseholdId(user.uid, hid);
-      await ensureMembership({ uid: user.uid, householdId: hid, displayName: user.displayName });
+      await ensureMembership({
+        uid: user.uid,
+        householdId: hid,
+        displayName: user.displayName,
+        email: user.email,
+      });
       setHouseholdId(hid);
     } catch (err) {
       setFixError(firebaseErrorToGreek(err));
@@ -949,52 +989,21 @@ setHouseholdId(hid || null);
     expensePaymentMethod === "Λογαριασμός Τράπεζας";
 
   function buildTxPayload() {
-    const numericAmount = parseFloat(normalizeAmountInput(amount));
-    if (!date) return { ok: false, message: "Συμπλήρωσε ημερομηνία." };
-    if (isNaN(numericAmount) || numericAmount <= 0)
-      return { ok: false, message: "Το ποσό πρέπει να είναι θετικός αριθμός." };
+  const numericAmount = parseFloat(normalizeAmountInput(amount));
+  if (!date) return { ok: false, message: "Συμπλήρωσε ημερομηνία." };
+  if (isNaN(numericAmount) || numericAmount <= 0)
+    return { ok: false, message: "Το ποσό πρέπει να είναι θετικός αριθμός." };
 
-    if (type === "income") {
-      const src = incomeSource === "Άλλο" ? (incomeSourceOther || "").trim() : "Μισθός";
-      if (incomeSource === "Άλλο" && !src) {
-        return { ok: false, message: "Γράψε την “πηγή εσόδου”." };
-      }
-      if (!incomeReceiptMethod) {
-        return { ok: false, message: "Διάλεξε “τρόπο λήψης εσόδου”." };
-      }
+  const memberUid = (txMemberUid || user?.uid || "").trim();
+  if (!memberUid) return { ok: false, message: "Διάλεξε μέλος νοικοκυριού." };
 
-      return {
-        ok: true,
-        payload: {
-          date,
-          month: asYYYYMM(date),
-          type: "income",
-          amount: numericAmount,
-          // legacy display fields
-          category: incomeReceiptMethod, // “τρόπος λήψης εσόδου” (τώρα από bank/wallet list)
-          paymentMethod: incomeSource === "Άλλο" ? "Άλλο" : "Μισθός",
-          // new fields
-          incomeSource: incomeSource,
-          incomeSourceOther: incomeSource === "Άλλο" ? src : "",
-          incomeReceiptMethod, // bank/wallet or receipt method
-          // expense-only fields
-          expenseCategoryOther: "",
-          expenseBankWallet: "",
-          expensePaymentMethod: "",
-          notes: notes.trim(),
-          updatedAt: serverTimestamp(),
-        },
-      };
+  if (type === "income") {
+    const src = incomeSource === "Άλλο" ? (incomeSourceOther || "").trim() : "Μισθός";
+    if (incomeSource === "Άλλο" && !src) {
+      return { ok: false, message: "Γράψε την “πηγή εσόδου”." };
     }
-
-    // expense
-    const catOther = expenseCategory === "Άλλα" ? (expenseCategoryOther || "").trim() : "";
-    if (expenseCategory === "Άλλα" && !catOther) {
-      return { ok: false, message: "Γράψε τι είναι το “Άλλα” στην κατηγορία." };
-    }
-
-    if (expenseNeedsBank && !expenseBankWallet) {
-      return { ok: false, message: "Διάλεξε τράπεζα/wallet." };
+    if (!incomeReceiptMethod) {
+      return { ok: false, message: "Διάλεξε “τρόπο λήψης εσόδου”." };
     }
 
     return {
@@ -1002,23 +1011,69 @@ setHouseholdId(hid || null);
       payload: {
         date,
         month: asYYYYMM(date),
-        type: "expense",
+        type: "income",
         amount: numericAmount,
-        category: expenseCategory,
-        paymentMethod: expensePaymentMethod,
+
+        memberUid,
+
+        // legacy display fields
+        category: incomeReceiptMethod,
+        paymentMethod: incomeSource === "Άλλο" ? "Άλλο" : "Μισθός",
+
         // new fields
-        expensePaymentMethod,
-        expenseBankWallet: expenseNeedsBank ? expenseBankWallet : "",
-        expenseCategoryOther: catOther,
-        // income-only fields
-        incomeSource: "",
-        incomeSourceOther: "",
-        incomeReceiptMethod: "",
-        notes: notes.trim(),
+        incomeSource,
+        incomeSourceOther: incomeSource === "Άλλο" ? src : "",
+        incomeReceiptMethod,
+
+        // expense-only fields
+        expenseCategoryOther: "",
+        expenseBankWallet: "",
+        expensePaymentMethod: "",
+
+        notes: (notes || "").trim(),
         updatedAt: serverTimestamp(),
       },
     };
   }
+
+  // expense
+  const catOther = expenseCategory === "Άλλα" ? (expenseCategoryOther || "").trim() : "";
+  if (expenseCategory === "Άλλα" && !catOther) {
+    return { ok: false, message: "Γράψε τι είναι το “Άλλα” στην κατηγορία." };
+  }
+
+  if (expenseNeedsBank && !expenseBankWallet) {
+    return { ok: false, message: "Διάλεξε τράπεζα/wallet." };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      date,
+      month: asYYYYMM(date),
+      type: "expense",
+      amount: numericAmount,
+
+      memberUid,
+
+      category: expenseCategory,
+      paymentMethod: expensePaymentMethod,
+
+      // new fields
+      expensePaymentMethod,
+      expenseBankWallet: expenseNeedsBank ? expenseBankWallet : "",
+      expenseCategoryOther: catOther,
+
+      // income-only fields
+      incomeSource: "",
+      incomeSourceOther: "",
+      incomeReceiptMethod: "",
+
+      notes: (notes || "").trim(),
+      updatedAt: serverTimestamp(),
+    },
+  };
+}
 
   async function handleSaveTransaction(e) {
     e.preventDefault();
@@ -1048,6 +1103,7 @@ setHouseholdId(hid || null);
   }
 
   function startEdit(t) {
+    setTxMemberUid((t.memberUid || t.createdByUid || user?.uid || "").trim());
     setEditingId(t.id);
 
     const txType = t.type === "income" ? "income" : "expense";
@@ -1153,22 +1209,35 @@ setHouseholdId(hid || null);
     return `${txType} – ${cat}`;
   }
 
-  function txMethodLine(t) {
-    if (t.type === "income") {
-      const src =
-        t.incomeSource === "Άλλο"
-          ? `Άλλο: ${t.incomeSourceOther || ""}`.trim()
-          : "Μισθός";
-      const receipt = t.incomeReceiptMethod || t.category || "";
-      return `Πηγή: ${src}${receipt ? ` • Λήψη: ${receipt}` : ""}`;
-    }
-
-    const pm = t.expensePaymentMethod || t.paymentMethod || "";
-    const needsBank =
-      pm === "Χρεωστική κάρτα" || pm === "Πιστωτική κάρτα" || pm === "Λογαριασμός Τράπεζας";
-    const bw = needsBank ? (t.expenseBankWallet || "") : "";
-    return `${pm}${bw ? ` • ${bw}` : ""}`.trim();
+  function memberLabelFromState(uid) {
+    const m = members.find((x) => x.uid === uid || x.id === uid);
+    const name = (m?.displayName || "").trim();
+    const mail = (m?.email || "").trim();
+    if (name) return name;
+    if (mail) return mail;
+    return uid ? `Μέλος (${String(uid).slice(0, 6)}…)` : "—";
   }
+
+  function txMethodLine(t) {
+  const who = memberLabelFromState(t.memberUid || t.createdByUid || "");
+
+  if (t.type === "income") {
+    const src =
+      t.incomeSource === "Άλλο"
+        ? `Άλλο: ${(t.incomeSourceOther || "").trim()}`
+        : "Μισθός";
+
+    const receipt = t.incomeReceiptMethod || t.category || "";
+    return `Πηγή: ${src}${receipt ? ` • Λήψη: ${receipt}` : ""}${who ? ` • Μέλος: ${who}` : ""}`.trim();
+  }
+
+  const pm = t.expensePaymentMethod || t.paymentMethod || "";
+  const needsBank =
+    pm === "Χρεωστική κάρτα" || pm === "Πιστωτική κάρτα" || pm === "Λογαριασμός Τράπεζας";
+  const bw = needsBank ? (t.expenseBankWallet || "") : "";
+
+  return `${pm}${bw ? ` • ${bw}` : ""}${who ? ` • Μέλος: ${who}` : ""}`.trim();
+}
 
   function exportXLSX() {
   const rows = filteredTransactions
@@ -1932,6 +2001,34 @@ setHouseholdId(hid || null);
               ))}
             </select>
 
+            <div className="mt-3">
+  <label className="text-sm font-medium text-slate-700">Μέλος νοικοκυριού</label>
+  <select
+    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+    value={txMemberUid || user?.uid || ""}
+    onChange={(e) => setTxMemberUid(e.target.value)}
+  >
+    {(members.length
+      ? members
+      : [{ id: user?.uid, uid: user?.uid, displayName: user?.displayName, email: user?.email }]
+    )
+      .filter(Boolean)
+      .map((m) => {
+        const uid = m.uid || m.id;
+        const label =
+          (m.displayName || "").trim() ||
+          (m.email || "").trim() ||
+          `Μέλος (${String(uid).slice(0, 6)}...)`;
+        return (
+          <option key={uid} value={uid}>
+            {label}
+          </option>
+        );
+      })}
+  </select>
+  <p className="mt-1 text-[11px] text-slate-500">Ποιος χρεώθηκε/πλήρωσε την κίνηση.</p>
+</div>
+
             <button
               type="button"
               onClick={() => setAddBankWalletOpen((v) => !v)}
@@ -1983,6 +2080,8 @@ setHouseholdId(hid || null);
               ))}
             </select>
 
+            
+
             {expenseCategory === "Άλλα" && (
               <input
                 className="mt-2 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
@@ -2009,6 +2108,34 @@ setHouseholdId(hid || null);
                 </option>
               ))}
             </select>
+
+            <div className="mt-3">
+  <label className="text-sm font-medium text-slate-700">Μέλος νοικοκυριού</label>
+  <select
+    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+    value={txMemberUid || user?.uid || ""}
+    onChange={(e) => setTxMemberUid(e.target.value)}
+  >
+    {(members.length
+      ? members
+      : [{ id: user?.uid, uid: user?.uid, displayName: user?.displayName, email: user?.email }]
+    )
+      .filter(Boolean)
+      .map((m) => {
+        const uid = m.uid || m.id;
+        const label =
+          (m.displayName || "").trim() ||
+          (m.email || "").trim() ||
+          `Μέλος (${String(uid).slice(0, 6)}…)`;
+        return (
+          <option key={uid} value={uid}>
+            {label}
+          </option>
+        );
+      })}
+  </select>
+  <p className="mt-1 text-[11px] text-slate-500">Ποιος χρεώθηκε/πλήρωσε την κίνηση.</p>
+</div>
 
             {expenseNeedsBank && (
               <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
