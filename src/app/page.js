@@ -29,17 +29,168 @@ import {
 /** =========================
  *  Defaults
  *  ========================= */
-const EXPENSE_CATEGORIES = [
-  "Σούπερ μάρκετ",
-  "Ενοίκιο / Δάνειο",
-  "Λογαριασμοί",
-  "Καύσιμα / Μετακινήσεις",
-  "Φαγητό έξω / Καφέδες",
-  "Παιδιά / Σχολείο",
-  "Υγεία",
-  "Ψυχαγωγία",
-  "Άλλα",
+const EXPENSE_CATEGORY_TREE = [
+  {
+    name: "Ψώνια",
+    items: [
+      { name: "Σούπερ Μάρκετ" },
+      { name: "Φούρνος" },
+      { name: "Κρεοπωλείο" },
+      { name: "Μανάβικο" },
+      { name: "Λαϊκή" },
+      { name: "Ψαράδικο" },
+      { name: "Ρούχα" },
+      { name: "Παπούτσια" },
+      { name: "Τεχνολογία" },
+      { name: "Άλλα Ψώνια", other: true },
+    ],
+  },
+  {
+    name: "Πάγια Έξοδα Σπιτιού",
+    items: [
+      { name: "Λογαριασμός Ρεύματος" },
+      { name: "Λογαριασμός Νερού" },
+      { name: "Λογαριασμός Κινητού" },
+      { name: "Λογαριασμός Σταθερού/Ιντερνετ" },
+      { name: "ΕΝΦΙΑ" },
+      { name: "Ενοίκιο" },
+      { name: "Κοινόχρηστα" },
+      { name: "Δόση Δανείου" },
+      { name: "Άλλα Έξοδα Σπιτιού", other: true },
+    ],
+  },
+  {
+    name: "Διασκέδαση",
+    items: [
+      { name: "Φαγητό έξω" },
+      { name: "Καφετέρια" },
+      { name: "Μπαρ/Club" },
+      { name: "Μπουζούκια" },
+      { name: "Παιδότοπος" },
+      { name: "Γενέθλια/Γιορτή" },
+    ],
+  },
+  {
+    name: "Αυτοκίνητο",
+    items: [
+      { name: "Βενζίνη" },
+      { name: "Υγραέριο" },
+      { name: "Πετρέλαιο" },
+      { name: "Διόδια" },
+      { name: "Τέλη Κυκλοφορίας" },
+      { name: "Ασφάλεια" },
+      { name: "Επισκευή" },
+      { name: "Service" },
+      { name: "Δόση Δανείου" },
+      { name: "Πλύσιμο Αυτοκινήτου" },
+    ],
+  },
+  {
+    name: "Ταξίδια",
+    items: [
+      { name: "Αεροπορικό Εισιτήριο" },
+      { name: "Εισιτήριο Πλοίου" },
+      { name: "Εισιτήριο ΚΤΕΛ" },
+      { name: "Εισιτήριο Τρένου" },
+      { name: "Ξενοδοχείο" },
+      { name: "Διάφορες Δραστηριότητες" },
+    ],
+  },
+  {
+    name: "Παιδιά",
+    items: [
+      {
+        name: "Ξένες Γλώσσες",
+        items: [
+          { name: "Αγγλικά" },
+          { name: "Γαλλικά" },
+          { name: "Ιταλικά" },
+          { name: "Γερμανικά" },
+          { name: "Άλλες Γλώσσες", other: true },
+        ],
+      },
+      {
+        name: "Αθλητικές Δραστηριότητες",
+        items: [
+          { name: "Ποδόσφαιρο" },
+          { name: "Μπάσκετ" },
+          { name: "Βόλεϊ" },
+          { name: "Τέννις" },
+          { name: "Αναρρίχηση/Ορειβασία" },
+          { name: "Πολεμικές Τέχνες" },
+          { name: "Ωδείο" },
+        ],
+      },
+      { name: "Ιδιωτικό Σχολείο" },
+      { name: "Άλλες Δραστηριότητες", other: true },
+    ],
+  },
+  {
+    name: "Υγεία",
+    items: [{ name: "Νοσηλεία σε Νοσοκομείο" }, { name: "Εξετάσεις" }],
+  },
+  {
+    name: "Προσωπική Φροντίδα",
+    items: [{ name: "Κομμωτήριο" }, { name: "Μανικιούρ" }, { name: "Πεντικιούρ" }],
+  },
+  {
+    name: "Κατοικίδια",
+    items: [
+      { name: "Τροφή" },
+      { name: "Κτηνίατρος" },
+      { name: "Διάφορα Αξεσουάρ" },
+      { name: "Μεταφορές" },
+      { name: "Φιλοξενία" },
+    ],
+  },
+  { name: "Άλλα έξοδα", other: true },
 ];
+
+function findExpenseMainNode(main) {
+  return EXPENSE_CATEGORY_TREE.find((x) => x.name === main) || null;
+}
+
+function findExpenseSub1Node(main, sub1) {
+  const m = findExpenseMainNode(main);
+  if (!m?.items) return null;
+  return m.items.find((x) => x.name === sub1) || null;
+}
+
+function getExpenseSub1Options(main) {
+  const m = findExpenseMainNode(main);
+  if (!m || m.other) return [];
+  return (m.items || []).map((x) => x.name);
+}
+
+function getExpenseSub2Options(main, sub1) {
+  const s1 = findExpenseSub1Node(main, sub1);
+  if (!s1?.items) return [];
+  return (s1.items || []).map((x) => x.name);
+}
+
+function isExpenseOtherSelection(main, sub1, sub2) {
+  const m = findExpenseMainNode(main);
+  if (m?.other) return true;
+
+  if (!sub1) return false;
+  const s1 = findExpenseSub1Node(main, sub1);
+  if (s1?.other) return true;
+
+  if (!sub2) return false;
+  const s2 = (s1?.items || []).find((x) => x.name === sub2) || null;
+  return !!s2?.other;
+}
+
+function buildExpenseCategoryPath({ main, sub1, sub2, otherText }) {
+  const parts = [main, sub1, sub2].filter(Boolean);
+  let path = parts.join(" / ");
+
+  if (isExpenseOtherSelection(main, sub1, sub2)) {
+    const t = String(otherText || "").trim();
+    if (t) path = path ? `${path} / ${t}` : t;
+  }
+  return path;
+}
 
 const EXPENSE_PAYMENT_METHODS = [
   "Μετρητά",
@@ -64,6 +215,16 @@ const DEFAULT_BANK_WALLETS = [
 ];
 
 const DEFAULT_INCOME_RECEIPT_METHODS = ["Alpha Bank", "Μετρητά στο χέρι"];
+const INCOME_SOURCES = [
+  "Μισθός",
+  "Σύνταξη",
+  "Από Επενδύσεις",
+  "Ενοίκιο",
+  "Επιστροφή χρημάτων",
+  "Δώρο",
+  "Άλλο",
+];
+
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);
@@ -553,8 +714,11 @@ export default function HomePage() {
   const [amount, setAmount] = useState("");
 
   // expense fields
-  const [expenseCategory, setExpenseCategory] = useState("Σούπερ μάρκετ");
-  const [expenseCategoryOther, setExpenseCategoryOther] = useState("");
+  const [expenseMainCategory, setExpenseMainCategory] = useState("Ψώνια");
+  const [expenseSubCategory, setExpenseSubCategory] = useState("Σούπερ Μάρκετ");
+  const [expenseSubCategory2, setExpenseSubCategory2] = useState("");
+  const [expenseOtherText, setExpenseOtherText] = useState("");
+
   const [expensePaymentMethod, setExpensePaymentMethod] = useState("Μετρητά");
   const [expenseBankWallet, setExpenseBankWallet] = useState("Alpha Bank");
 
@@ -690,8 +854,10 @@ setHouseholdId(hid || null);
     setType("expense");
     setAmount("");
 
-    setExpenseCategory("Σούπερ μάρκετ");
-    setExpenseCategoryOther("");
+    setExpenseMainCategory("Ψώνια");
+    setExpenseSubCategory("Σούπερ Μάρκετ");
+    setExpenseSubCategory2("");
+    setExpenseOtherText("");
     setExpensePaymentMethod("Μετρητά");
     setExpenseBankWallet(bankWallets[0] || "Alpha Bank");
 
@@ -998,7 +1164,11 @@ setHouseholdId(hid || null);
   if (!memberUid) return { ok: false, message: "Διάλεξε μέλος νοικοκυριού." };
 
   if (type === "income") {
-    const src = incomeSource === "Άλλο" ? (incomeSourceOther || "").trim() : "Μισθός";
+    const src =
+  incomeSource === "Άλλο"
+    ? (incomeSourceOther || "").trim()
+    : (incomeSource || "Μισθός");
+
     if (incomeSource === "Άλλο" && !src) {
       return { ok: false, message: "Γράψε την “πηγή εσόδου”." };
     }
@@ -1018,7 +1188,7 @@ setHouseholdId(hid || null);
 
         // legacy display fields
         category: incomeReceiptMethod,
-        paymentMethod: incomeSource === "Άλλο" ? "Άλλο" : "Μισθός",
+        paymentMethod: incomeSource || "Μισθός",
 
         // new fields
         incomeSource,
@@ -1036,11 +1206,80 @@ setHouseholdId(hid || null);
     };
   }
 
-  // expense
-  const catOther = expenseCategory === "Άλλα" ? (expenseCategoryOther || "").trim() : "";
-  if (expenseCategory === "Άλλα" && !catOther) {
-    return { ok: false, message: "Γράψε τι είναι το “Άλλα” στην κατηγορία." };
+    // expense
+  const main = (expenseMainCategory || "").trim();
+  if (!main) return { ok: false, message: "Διάλεξε κατηγορία εξόδου." };
+
+  const sub1Options = getExpenseSub1Options(main);
+  const sub1 = (expenseSubCategory || "").trim();
+
+  if (sub1Options.length > 0 && !sub1) {
+    return { ok: false, message: "Διάλεξε υποκατηγορία." };
   }
+
+  const sub2Options = getExpenseSub2Options(main, sub1);
+  const sub2 = (expenseSubCategory2 || "").trim();
+
+  if (sub2Options.length > 0 && !sub2) {
+    return { ok: false, message: "Διάλεξε επιλογή (3ο επίπεδο)." };
+  }
+
+  const otherText = (expenseOtherText || "").trim();
+  const needsOther = isExpenseOtherSelection(main, sub1, sub2);
+
+  if (needsOther && !otherText) {
+    return { ok: false, message: 'Γράψε τι είναι το "Άλλα".' };
+  }
+
+  const path = buildExpenseCategoryPath({
+    main,
+    sub1: sub1Options.length ? sub1 : "",
+    sub2: sub2Options.length ? sub2 : "",
+    otherText,
+  });
+
+  if (expenseNeedsBank && !expenseBankWallet) {
+    return { ok: false, message: "Διάλεξε τράπεζα/wallet." };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      date,
+      month: asYYYYMM(date),
+      type: "expense",
+      amount: numericAmount,
+
+      memberUid,
+
+      // legacy (κρατάμε main για να δουλεύουν τα παλιά)
+      category: main,
+      paymentMethod: expensePaymentMethod,
+
+      // νέα πεδία κατηγοριοποίησης
+      expenseMainCategory: main,
+      expenseSubCategory: sub1Options.length ? sub1 : "",
+      expenseSubCategory2: sub2Options.length ? sub2 : "",
+      expenseOtherText: needsOther ? otherText : "",
+      expenseCategoryPath: path,
+
+      // payment
+      expensePaymentMethod,
+      expenseBankWallet: expenseNeedsBank ? expenseBankWallet : "",
+
+      // compatibility
+      expenseCategoryOther: (expenseOtherText || "").trim(),
+
+      // income-only fields
+      incomeSource: "",
+      incomeSourceOther: "",
+      incomeReceiptMethod: "",
+
+      notes: (notes || "").trim(),
+      updatedAt: serverTimestamp(),
+    },
+  };
+
 
   if (expenseNeedsBank && !expenseBankWallet) {
     return { ok: false, message: "Διάλεξε τράπεζα/wallet." };
@@ -1058,11 +1297,11 @@ setHouseholdId(hid || null);
 
       category: expenseCategory,
       paymentMethod: expensePaymentMethod,
-
+      
       // new fields
       expensePaymentMethod,
       expenseBankWallet: expenseNeedsBank ? expenseBankWallet : "",
-      expenseCategoryOther: catOther,
+      expenseCategoryOther: (expenseOtherText || "").trim(),
 
       // income-only fields
       incomeSource: "",
@@ -1114,23 +1353,50 @@ setHouseholdId(hid || null);
 
     if (txType === "income") {
       const src = t.incomeSource || t.paymentMethod || "Μισθός";
-      const srcNorm = src === "Άλλο" || src === "Μισθός" ? src : "Άλλο";
-      setIncomeSource(srcNorm);
+const isKnown = INCOME_SOURCES.includes(src);
 
-      const other = t.incomeSourceOther || (srcNorm === "Άλλο" ? String(src || "") : "");
-      setIncomeSourceOther(other && other !== "Άλλο" ? other : "");
+setIncomeSource(isKnown ? src : "Άλλο");
+
+if (src === "Άλλο") {
+  setIncomeSourceOther((t.incomeSourceOther || "").trim());
+} else if (!isKnown) {
+  // αν βρεθεί “παλιά/άγνωστη” τιμή, τη βάζουμε ως “Άλλο”
+  setIncomeSourceOther(String(src || "").trim());
+} else {
+  setIncomeSourceOther("");
+}
+
 
       const rm = t.incomeReceiptMethod || t.category || bankWallets[0] || "Alpha Bank";
       setIncomeReceiptMethod(rm);
 
       // clear expense fields
-      setExpenseCategory("Σούπερ μάρκετ");
-      setExpenseCategoryOther("");
+      setExpenseMainCategory("Ψώνια");
+      setExpenseSubCategory("Σούπερ Μάρκετ");
+      setExpenseSubCategory2("");
+      setExpenseOtherText("");
       setExpensePaymentMethod("Μετρητά");
       setExpenseBankWallet(bankWallets[0] || "Alpha Bank");
     } else {
-      setExpenseCategory(t.category || "Σούπερ μάρκετ");
-      setExpenseCategoryOther(t.expenseCategoryOther || "");
+            const main =
+        (t.expenseMainCategory || t.category || "Ψώνια").trim();
+
+      setExpenseMainCategory(main);
+
+      const sub1Options = getExpenseSub1Options(main);
+      const nextSub1 =
+        (t.expenseSubCategory || (sub1Options[0] || "")).trim();
+
+      setExpenseSubCategory(sub1Options.length ? nextSub1 : "");
+
+      const sub2Options = getExpenseSub2Options(main, nextSub1);
+      const nextSub2 =
+        (t.expenseSubCategory2 || (sub2Options[0] || "")).trim();
+
+      setExpenseSubCategory2(sub2Options.length ? nextSub2 : "");
+
+      setExpenseOtherText((t.expenseOtherText || t.expenseCategoryOther || "").trim());
+
       setExpensePaymentMethod(t.expensePaymentMethod || t.paymentMethod || "Μετρητά");
       setExpenseBankWallet(t.expenseBankWallet || bankWallets[0] || "Alpha Bank");
 
@@ -1205,8 +1471,19 @@ setHouseholdId(hid || null);
       const receipt = t.incomeReceiptMethod || t.category || "—";
       return `${txType} – ${receipt}`;
     }
-    const cat = t.category === "Άλλα" ? (t.expenseCategoryOther || "Άλλα") : (t.category || "—");
-    return `${txType} – ${cat}`;
+    const path =
+  t.expenseCategoryPath ||
+  (() => {
+    const main = t.expenseMainCategory || t.category || "";
+    const s1 = t.expenseSubCategory || "";
+    const s2 = t.expenseSubCategory2 || "";
+    const other = t.expenseOtherText || t.expenseCategoryOther || "";
+    const parts = [main, s1, s2].filter(Boolean).join(" / ");
+    if (other) return parts ? `${parts} / ${other}` : other;
+    return parts || (t.category || "—");
+  })();
+
+return `${txType} – ${path}`;
   }
 
   function memberLabelFromState(uid) {
@@ -1224,9 +1501,10 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
 
   if (t.type === "income") {
     const src =
-      t.incomeSource === "Άλλο"
-        ? `Άλλο: ${(t.incomeSourceOther || "").trim()}`
-        : "Μισθός";
+  t.incomeSource === "Άλλο"
+    ? `Άλλο: ${(t.incomeSourceOther || "").trim()}`
+    : (t.incomeSource || "Μισθός");
+
 
     const receipt = t.incomeReceiptMethod || t.category || "";
     return `Πηγή: ${src}${receipt ? ` • Λήψη: ${receipt}` : ""}${
@@ -1251,7 +1529,10 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
     .map((t) => {
       if (t.type === "income") {
         const src =
-          t.incomeSource === "Άλλο" ? (t.incomeSourceOther || "") : "Μισθός";
+  t.incomeSource === "Άλλο"
+    ? (t.incomeSourceOther || "")
+    : (t.incomeSource || "Μισθός");
+
         return {
           date: t.date || "",
           type: "income",
@@ -1275,8 +1556,8 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
         income_receipt_method: "",
         expense_payment_method: pm,
         expense_bank_wallet: t.expenseBankWallet || "",
-        expense_category: t.category || "",
-        expense_category_other: t.expenseCategoryOther || "",
+        expense_category: t.expenseCategoryPath || t.category || "",
+        expense_category_other: t.expenseOtherText || t.expenseCategoryOther || "",
         notes: (t.notes || "").replace(/\n/g, " "),
       };
     });
@@ -1892,28 +2173,35 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
   </div>
 
   {/* BODY */}
-  <div className="p-4 sm:p-6 bg-slate-50/60">
-    <form
-      onSubmit={handleSaveTransaction}
-      className="grid grid-cols-1 gap-4 md:grid-cols-2"
-    >
+<div className={`p-4 sm:p-6 ${type === "income" ? "bg-emerald-50" : "bg-rose-50"}`}>
+    <form onSubmit={handleSaveTransaction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {/* Ημερομηνία */}
-      <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
-        <label className="text-sm font-medium text-slate-700">
-          Ημερομηνία
-        </label>
+      <div
+        className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+          type === "income" ? "border-emerald-200" : "border-rose-200"
+        }`}
+      >
+        <label className="text-sm font-medium text-slate-700">Ημερομηνία</label>
         <input
           type="date"
-          className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           value={date}
           onChange={(e) => setDate(e.target.value)}
         />
       </div>
 
       {/* Τύπος */}
-      <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+      <div
+        className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+          type === "income" ? "border-emerald-200" : "border-rose-200"
+        }`}
+      >
         <label className="text-sm font-medium text-slate-700">Τύπος</label>
-        <div className="grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+        <div
+          className={`grid grid-cols-2 rounded-2xl border p-1 ${
+            type === "income" ? "border-emerald-200 bg-emerald-50/40" : "border-rose-200 bg-rose-50/40"
+          }`}
+        >
           <button
             type="button"
             onClick={() => setType("income")}
@@ -1940,7 +2228,11 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
       </div>
 
       {/* Ποσό */}
-      <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
+      <div
+        className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+          type === "income" ? "border-emerald-200" : "border-rose-200"
+        }`}
+      >
         <label className="text-sm font-medium text-slate-700">
           Ποσό (€) <span className="text-rose-600">*</span>
         </label>
@@ -1962,40 +2254,52 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
         <p className="text-[11px] text-slate-500">Υποχρεωτικό πεδίο.</p>
       </div>
 
+      {/* filler for grid symmetry (optional) */}
+      <div className="hidden md:block" />
+
       {/* INCOME / EXPENSE δυναμικό κομμάτι */}
       {type === "income" ? (
         <>
           {/* Πηγή εσόδου */}
-          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">
-              Πηγή εσόδου
-            </label>
+          <div
+            className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+              type === "income" ? "border-emerald-200" : "border-rose-200"
+            }`}
+          >
+            <label className="text-sm font-medium text-slate-700">Πηγή εσόδου</label>
             <select
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
               value={incomeSource}
               onChange={(e) => setIncomeSource(e.target.value)}
             >
               <option value="Μισθός">Μισθός</option>
+              <option value="Σύνταξη">Σύνταξη</option>
+              <option value="Από Επενδύσεις">Από Επενδύσεις</option>
+              <option value="Ενοίκιο">Ενοίκιο</option>
+              <option value="Επιστροφή χρημάτων">Επιστροφή χρημάτων</option>
+              <option value="Δώρο">Δώρο</option>
               <option value="Άλλο">Άλλο</option>
             </select>
 
             {incomeSource === "Άλλο" && (
               <input
-                className="mt-2 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                placeholder="Γράψε την πηγή (π.χ. Ενοίκιο, Bonus κτλ.)"
+                className="mt-2 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                placeholder="Γράψε την πηγή (π.χ. Bonus κτλ.)"
                 value={incomeSourceOther}
                 onChange={(e) => setIncomeSourceOther(e.target.value)}
               />
             )}
           </div>
 
-          {/* Τρόπος λήψης εσόδου */}
-          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">
-              Τρόπος λήψης εσόδου
-            </label>
+          {/* Τρόπος λήψης εσόδου + μέλος + add wallet */}
+          <div
+            className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+              type === "income" ? "border-emerald-200" : "border-rose-200"
+            }`}
+          >
+            <label className="text-sm font-medium text-slate-700">Τρόπος λήψης εσόδου</label>
             <select
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
               value={incomeReceiptMethod}
               onChange={(e) => setIncomeReceiptMethod(e.target.value)}
             >
@@ -2007,32 +2311,32 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
             </select>
 
             <div className="mt-3">
-  <label className="text-sm font-medium text-slate-700">Μέλος νοικοκυριού</label>
-  <select
-    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-    value={txMemberUid || user?.uid || ""}
-    onChange={(e) => setTxMemberUid(e.target.value)}
-  >
-    {(members.length
-      ? members
-      : [{ id: user?.uid, uid: user?.uid, displayName: user?.displayName, email: user?.email }]
-    )
-      .filter(Boolean)
-      .map((m) => {
-        const uid = m.uid || m.id;
-        const label =
-          (m.displayName || "").trim() ||
-          (m.email || "").trim() ||
-          `Μέλος (${String(uid).slice(0, 6)}...)`;
-        return (
-          <option key={uid} value={uid}>
-            {label}
-          </option>
-        );
-      })}
-  </select>
-  <p className="mt-1 text-[11px] text-slate-500">Ποιος χρεώθηκε/πλήρωσε την κίνηση.</p>
-</div>
+              <label className="text-sm font-medium text-slate-700">Μέλος νοικοκυριού</label>
+              <select
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                value={txMemberUid || user?.uid || ""}
+                onChange={(e) => setTxMemberUid(e.target.value)}
+              >
+                {(members.length
+                  ? members
+                  : [{ id: user?.uid, uid: user?.uid, displayName: user?.displayName, email: user?.email }]
+                )
+                  .filter(Boolean)
+                  .map((m) => {
+                    const uid = m.uid || m.id;
+                    const label =
+                      (m.displayName || "").trim() ||
+                      (m.email || "").trim() ||
+                      `Μέλος (${String(uid).slice(0, 6)}...)`;
+                    return (
+                      <option key={uid} value={uid}>
+                        {label}
+                      </option>
+                    );
+                  })}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-500">Σε ποιο μέλος ανήκει/αφορά η κίνηση.</p>
+            </div>
 
             <button
               type="button"
@@ -2045,7 +2349,7 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
             {addBankWalletOpen && (
               <div className="mt-2 flex flex-col sm:flex-row gap-2">
                 <input
-                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                   placeholder='π.χ. "Alpha Bank", "Μετρητά στο χέρι", "Viva Wallet"'
                   value={newBankWallet}
                   onChange={(e) => setNewBankWallet(e.target.value)}
@@ -2061,49 +2365,127 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
               </div>
             )}
 
-            <p className="mt-1 text-[11px] text-slate-500">
-              Αποθηκεύεται μόνο για το συγκεκριμένο νοικοκυριό.
-            </p>
+            <p className="mt-1 text-[11px] text-slate-500">Αποθηκεύεται μόνο για το συγκεκριμένο νοικοκυριό.</p>
           </div>
         </>
       ) : (
         <>
-          {/* Κατηγορία */}
-          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">
-              Κατηγορία
-            </label>
-            <select
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-              value={expenseCategory}
-              onChange={(e) => setExpenseCategory(e.target.value)}
-            >
-              {EXPENSE_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+                    {/* Κατηγορία + Υποκατηγορίες (tree) */}
+          <div
+            className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-3 ${
+              type === "income" ? "border-emerald-200" : "border-rose-200"
+            }`}
+          >
+            {/* 1) Main */}
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">Κατηγορία</label>
+              <select
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+                value={expenseMainCategory}
+                onChange={(e) => {
+                  const nextMain = e.target.value;
+                  setExpenseMainCategory(nextMain);
 
-            
+                  const sub1Opts = getExpenseSub1Options(nextMain);
+                  const nextSub1 = sub1Opts[0] || "";
+                  setExpenseSubCategory(sub1Opts.length ? nextSub1 : "");
 
-            {expenseCategory === "Άλλα" && (
-              <input
-                className="mt-2 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                placeholder="Γράψε τι είναι το “Άλλα” (π.χ. Δώρο, Σέρβις κτλ.)"
-                value={expenseCategoryOther}
-                onChange={(e) => setExpenseCategoryOther(e.target.value)}
-              />
+                  const sub2Opts = getExpenseSub2Options(nextMain, nextSub1);
+                  const nextSub2 = sub2Opts[0] || "";
+                  setExpenseSubCategory2(sub2Opts.length ? nextSub2 : "");
+
+                  setExpenseOtherText("");
+                }}
+              >
+                {EXPENSE_CATEGORY_TREE.map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2) Sub1 */}
+            {(() => {
+              const sub1Opts = getExpenseSub1Options(expenseMainCategory);
+              if (!sub1Opts.length) return null;
+
+              return (
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Υποκατηγορία</label>
+                  <select
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    value={expenseSubCategory}
+                    onChange={(e) => {
+                      const nextSub1 = e.target.value;
+                      setExpenseSubCategory(nextSub1);
+
+                      const sub2Opts = getExpenseSub2Options(expenseMainCategory, nextSub1);
+                      const nextSub2 = sub2Opts[0] || "";
+                      setExpenseSubCategory2(sub2Opts.length ? nextSub2 : "");
+
+                      setExpenseOtherText("");
+                    }}
+                  >
+                    {sub1Opts.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
+
+            {/* 3) Sub2 */}
+            {(() => {
+              const sub2Opts = getExpenseSub2Options(expenseMainCategory, expenseSubCategory);
+              if (!sub2Opts.length) return null;
+
+              return (
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Επιλογή</label>
+                  <select
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    value={expenseSubCategory2}
+                    onChange={(e) => {
+                      setExpenseSubCategory2(e.target.value);
+                      setExpenseOtherText("");
+                    }}
+                  >
+                    {sub2Opts.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
+
+            {/* “Άλλα …” input όταν χρειάζεται */}
+            {isExpenseOtherSelection(expenseMainCategory, expenseSubCategory, expenseSubCategory2) && (
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Άλλα</label>
+                <input
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  placeholder='Γράψε τι είναι το "Άλλα".'
+                  value={expenseOtherText}
+                  onChange={(e) => setExpenseOtherText(e.target.value)}
+                />
+              </div>
             )}
           </div>
 
-          {/* Τρόπος πληρωμής + τράπεζα */}
-          <div className="rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">
-              Τρόπος πληρωμής
-            </label>
+          {/* Τρόπος πληρωμής (+ τράπεζα/wallet + μέλος) */}
+          <div
+            className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+              type === "income" ? "border-emerald-200" : "border-rose-200"
+            }`}
+          >
+            <label className="text-sm font-medium text-slate-700">Τρόπος πληρωμής</label>
             <select
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
               value={expensePaymentMethod}
               onChange={(e) => setExpensePaymentMethod(e.target.value)}
             >
@@ -2114,39 +2496,42 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
               ))}
             </select>
 
+            {/* Μέλος νοικοκυριού (πάντα, όχι μόνο όταν χρειάζεται τράπεζα) */}
             <div className="mt-3">
-  <label className="text-sm font-medium text-slate-700">Μέλος νοικοκυριού</label>
-  <select
-    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-    value={txMemberUid || user?.uid || ""}
-    onChange={(e) => setTxMemberUid(e.target.value)}
-  >
-    {(members.length
-      ? members
-      : [{ id: user?.uid, uid: user?.uid, displayName: user?.displayName, email: user?.email }]
-    )
-      .filter(Boolean)
-      .map((m) => {
-        const uid = m.uid || m.id;
-        const label =
-          (m.displayName || "").trim() ||
-          (m.email || "").trim() ||
-          `Μέλος (${String(uid).slice(0, 6)}…)`;
-        return (
-          <option key={uid} value={uid}>
-            {label}
-          </option>
-        );
-      })}
-  </select>
-  <p className="mt-1 text-[11px] text-slate-500">Ποιος χρεώθηκε/πλήρωσε την κίνηση.</p>
-</div>
+              <label className="text-sm font-medium text-slate-700">Μέλος νοικοκυριού</label>
+              <select
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                value={txMemberUid || user?.uid || ""}
+                onChange={(e) => setTxMemberUid(e.target.value)}
+              >
+                {(members.length
+                  ? members
+                  : [{ id: user?.uid, uid: user?.uid, displayName: user?.displayName, email: user?.email }]
+                )
+                  .filter(Boolean)
+                  .map((m) => {
+                    const uid = m.uid || m.id;
+                    const label =
+                      (m.displayName || "").trim() ||
+                      (m.email || "").trim() ||
+                      `Μέλος (${String(uid).slice(0, 6)}…)`;
+                    return (
+                      <option key={uid} value={uid}>
+                        {label}
+                      </option>
+                    );
+                  })}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-500">Σε ποιο μέλος ανήκει/αφορά η κίνηση.</p>
+            </div>
 
             {expenseNeedsBank && (
-              <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                <label className="text-sm font-medium text-slate-700">
-                  Τράπεζα / Wallet
-                </label>
+              <div
+                className={`mt-3 rounded-2xl border p-3 ${
+                  type === "income" ? "border-emerald-200 bg-emerald-50/25" : "border-rose-200 bg-rose-50/25"
+                }`}
+              >
+                <label className="text-sm font-medium text-slate-700">Τράπεζα / Wallet</label>
                 <select
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                   value={expenseBankWallet}
@@ -2170,7 +2555,7 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
                 {addBankWalletOpen && (
                   <div className="mt-2 flex flex-col sm:flex-row gap-2">
                     <input
-                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                       placeholder='π.χ. "Viva Wallet", "Wise" κτλ.'
                       value={newBankWallet}
                       onChange={(e) => setNewBankWallet(e.target.value)}
@@ -2186,9 +2571,7 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
                   </div>
                 )}
 
-                <p className="mt-2 text-[11px] text-slate-500">
-                  Αποθηκεύεται μόνο για το συγκεκριμένο νοικοκυριό.
-                </p>
+                <p className="mt-2 text-[11px] text-slate-500">Αποθηκεύεται μόνο για το συγκεκριμένο νοικοκυριό.</p>
               </div>
             )}
           </div>
@@ -2196,13 +2579,15 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
       )}
 
       {/* Σχόλια */}
-      <div className="md:col-span-2 rounded-2xl bg-white/80 border border-slate-100 p-3 shadow-sm flex flex-col gap-1">
-        <label className="text-sm font-medium text-slate-700">
-          Σχόλια (προαιρετικό)
-        </label>
+      <div
+        className={`md:col-span-2 rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+          type === "income" ? "border-emerald-200" : "border-rose-200"
+        }`}
+      >
+        <label className="text-sm font-medium text-slate-700">Σχόλια (προαιρετικό)</label>
         <textarea
           rows={2}
-          className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           placeholder="π.χ. ΔΕΗ Νοεμβρίου, σχολικά είδη κτλ."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -2222,9 +2607,7 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
           type="submit"
           disabled={busy}
           className={`rounded-2xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 transition ${
-            type === "income"
-              ? "bg-emerald-600 hover:bg-emerald-700"
-              : "bg-slate-900 hover:bg-slate-800"
+            type === "income" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-900 hover:bg-slate-800"
           }`}
         >
           {busy ? "..." : editingId ? "Αποθήκευση αλλαγών" : "Αποθήκευση κίνησης"}
@@ -2233,8 +2616,6 @@ const paidBy = memberLabelFromState(t.memberUid || t.createdByUid || "");
     </form>
   </div>
 </section>
-
-
 
             {/* LIST */}
             <section className="mb-8 rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
