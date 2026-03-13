@@ -31,7 +31,7 @@ import {
  *  ========================= */
 const CASH_ACCOUNT = "Μετρητά";
 
-const EXPENSE_CATEGORY_TREE = [
+const DEFAULT_EXPENSE_CATEGORY_TREE = [
   {
     name: "Ψώνια",
     items: [
@@ -148,40 +148,40 @@ const EXPENSE_CATEGORY_TREE = [
   { name: "Άλλα έξοδα", other: true },
 ];
 
-function findExpenseMainNode(main) {
-  return EXPENSE_CATEGORY_TREE.find((x) => x.name === main) || null;
+function findExpenseMainNode(tree, main) {
+  return (tree || []).find((x) => x.name === main) || null;
 }
-function findExpenseSub1Node(main, sub1) {
-  const m = findExpenseMainNode(main);
+function findExpenseSub1Node(tree, main, sub1) {
+  const m = findExpenseMainNode(tree, main);
   if (!m?.items) return null;
   return m.items.find((x) => x.name === sub1) || null;
 }
-function getExpenseSub1Options(main) {
-  const m = findExpenseMainNode(main);
+function getExpenseSub1Options(tree, main) {
+  const m = findExpenseMainNode(tree, main);
   if (!m || m.other) return [];
   return (m.items || []).map((x) => x.name);
 }
-function getExpenseSub2Options(main, sub1) {
-  const s1 = findExpenseSub1Node(main, sub1);
+function getExpenseSub2Options(tree, main, sub1) {
+  const s1 = findExpenseSub1Node(tree, main, sub1);
   if (!s1?.items) return [];
   return (s1.items || []).map((x) => x.name);
 }
-function isExpenseOtherSelection(main, sub1, sub2) {
-  const m = findExpenseMainNode(main);
+function isExpenseOtherSelection(tree, main, sub1, sub2) {
+  const m = findExpenseMainNode(tree, main);
   if (m?.other) return true;
 
   if (!sub1) return false;
-  const s1 = findExpenseSub1Node(main, sub1);
+  const s1 = findExpenseSub1Node(tree, main, sub1);
   if (s1?.other) return true;
 
   if (!sub2) return false;
   const s2 = (s1?.items || []).find((x) => x.name === sub2) || null;
   return !!s2?.other;
 }
-function buildExpenseCategoryPath({ main, sub1, sub2, otherText }) {
+function buildExpenseCategoryPath(tree, { main, sub1, sub2, otherText }) {
   const parts = [main, sub1, sub2].filter(Boolean);
   let path = parts.join(" / ");
-  if (isExpenseOtherSelection(main, sub1, sub2)) {
+  if (isExpenseOtherSelection(tree, main, sub1, sub2)) {
     const t = String(otherText || "").trim();
     if (t) path = path ? `${path} / ${t}` : t;
   }
@@ -500,6 +500,32 @@ function normalizeWallets(list) {
   return Array.from(s);
 }
 
+function normalizeExpenseCategories(tree) {
+  if (!Array.isArray(tree) || tree.length === 0) return DEFAULT_EXPENSE_CATEGORY_TREE;
+
+  const cleanNode = (n) => {
+    const name = String(n?.name || "").trim();
+    if (!name) return null;
+    const other = !!n?.other;
+    const items = Array.isArray(n?.items) ? n.items.map(cleanNode).filter(Boolean) : undefined;
+
+    const out = { name };
+    if (other) out.other = true;
+    if (items && items.length) out.items = items;
+    return out;
+  };
+
+  const cleaned = tree.map(cleanNode).filter(Boolean);
+  return cleaned.length ? cleaned : DEFAULT_EXPENSE_CATEGORY_TREE;
+}
+
+function ensureInOptions(options, value) {
+  const v = String(value || "").trim();
+  if (!v) return options || [];
+  const arr = Array.isArray(options) ? options : [];
+  return arr.includes(v) ? arr : [v, ...arr];
+}
+
 async function ensureMembership({ uid, householdId, displayName, email }) {
   const memberRef = doc(db, "households", householdId, "members", uid);
   const existing = await getDoc(memberRef);
@@ -569,6 +595,7 @@ async function createHouseholdWithInvite({ uid, displayName }) {
     doc(db, "households", h.id, "meta", "settings"),
     {
       bankWallets: normalizeWallets(DEFAULT_BANK_WALLETS),
+      expenseCategories: DEFAULT_EXPENSE_CATEGORY_TREE,
       updatedAt: serverTimestamp(),
       updatedBy: uid,
     },
@@ -591,11 +618,13 @@ async function loadHouseholdSettings(householdId) {
   if (!snap.exists()) {
     return {
       bankWallets: normalizeWallets(DEFAULT_BANK_WALLETS),
+      expenseCategories: DEFAULT_EXPENSE_CATEGORY_TREE,
     };
   }
   const data = snap.data() || {};
   return {
     bankWallets: normalizeWallets(data.bankWallets),
+    expenseCategories: normalizeExpenseCategories(data.expenseCategories),
   };
 }
 
@@ -613,6 +642,107 @@ async function addBankWallet({ householdId, uid, value }) {
   });
 }
 
+function insertBeforeOther(list, node) {
+  const arr = Array.isArray(list) ? [...list] : [];
+  const idx = arr.findIndex((x) => x?.other);
+  if (idx === -1) return [...arr, node];
+  return [...arr.slice(0, idx), node, ...arr.slice(idx)];
+}
+
+async function updateExpenseCategories({ householdId, uid, updater }) {
+  const ref = doc(db, "households", householdId, "meta", "settings");
+
+  return await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists() ? snap.data() : {};
+    const current = normalizeExpenseCategories(data?.expenseCategories);
+
+    const next = normalizeExpenseCategories(updater(current));
+
+    tx.set(
+      ref,
+      {
+        expenseCategories: next,
+        updatedAt: serverTimestamp(),
+        updatedBy: uid,
+      },
+      { merge: true }
+    );
+
+    return next;
+  });
+}
+
+async function addExpenseMainCategory({ householdId, uid, name }) {
+  const nm = String(name || "").trim();
+  if (!nm) return null;
+
+  return updateExpenseCategories({
+    householdId,
+    uid,
+    updater: (tree) => {
+      if (tree.some((x) => x.name === nm)) return tree;
+      const node = { name: nm, items: [{ name: "Άλλα", other: true }] };
+      return insertBeforeOther(tree, node);
+    },
+  });
+}
+
+async function addExpenseSubCategory({ householdId, uid, mainName, subName }) {
+  const main = String(mainName || "").trim();
+  const sub = String(subName || "").trim();
+  if (!main || !sub) return null;
+
+  return updateExpenseCategories({
+    householdId,
+    uid,
+    updater: (tree) => {
+      const next = tree.map((m) => ({ ...m, items: Array.isArray(m.items) ? [...m.items] : m.items }));
+      const mainNode = next.find((x) => x.name === main);
+      if (!mainNode || mainNode.other) return next;
+
+      const items = Array.isArray(mainNode.items) ? mainNode.items : [];
+      if (items.some((x) => x.name === sub)) return next;
+
+      const subNode = { name: sub, items: [{ name: "Άλλα", other: true }] };
+      mainNode.items = insertBeforeOther(items, subNode);
+      return next;
+    },
+  });
+}
+
+async function addExpenseOption({ householdId, uid, mainName, subName, optionName }) {
+  const main = String(mainName || "").trim();
+  const sub = String(subName || "").trim();
+  const opt = String(optionName || "").trim();
+  if (!main || !sub || !opt) return null;
+
+  return updateExpenseCategories({
+    householdId,
+    uid,
+    updater: (tree) => {
+      const next = tree.map((m) => ({ ...m, items: Array.isArray(m.items) ? [...m.items] : m.items }));
+      const mainNode = next.find((x) => x.name === main);
+      if (!mainNode || mainNode.other) return next;
+
+      const subItems = Array.isArray(mainNode.items) ? mainNode.items : [];
+      const subNode = subItems.find((x) => x.name === sub);
+      if (!subNode || subNode.other) return next;
+
+      const options = Array.isArray(subNode.items) ? subNode.items : [];
+      if (options.some((x) => x.name === opt)) return next;
+
+      subNode.items = insertBeforeOther(options, { name: opt });
+      // φρόντισε να υπάρχει “Άλλα” στο τέλος
+      if (!subNode.items.some((x) => x.other)) {
+        subNode.items = [...subNode.items, { name: "Άλλα", other: true }];
+      }
+
+      return next;
+    },
+  });
+}
+
 /** =========================
  *  MAIN PAGE
  *  ========================= */
@@ -625,6 +755,7 @@ export default function HomePage() {
 
   // household settings (per household)
   const [bankWallets, setBankWallets] = useState(normalizeWallets(DEFAULT_BANK_WALLETS));
+  const [expenseCategories, setExpenseCategories] = useState(DEFAULT_EXPENSE_CATEGORY_TREE);
 
   // members (per household)
   const [members, setMembers] = useState([]);
@@ -694,6 +825,16 @@ export default function HomePage() {
   const [addBankWalletOpen, setAddBankWalletOpen] = useState(false);
   const [newBankWallet, setNewBankWallet] = useState("");
 
+  // adders for expense categories (per household)
+  const [addMainCatOpen, setAddMainCatOpen] = useState(false);
+  const [newMainCat, setNewMainCat] = useState("");
+
+  const [addSubCatOpen, setAddSubCatOpen] = useState(false);
+  const [newSubCat, setNewSubCat] = useState("");
+
+  const [addOptOpen, setAddOptOpen] = useState(false);
+  const [newOpt, setNewOpt] = useState("");
+
   // ✅ invite link auto-fill (?invite=...)
   useEffect(() => {
     const inv = getInviteFromURL();
@@ -753,6 +894,24 @@ export default function HomePage() {
         const settings = await loadHouseholdSettings(householdId);
         const wallets = normalizeWallets(settings.bankWallets);
         setBankWallets(wallets);
+
+        const cats = normalizeExpenseCategories(settings.expenseCategories);
+        setExpenseCategories(cats);
+
+        // Προαιρετικό αλλά πολύ χρήσιμο: αν το τρέχον selection δεν υπάρχει στο tree, γύρνα σε πρώτο διαθέσιμο
+        const firstMain = cats[0]?.name || "Άλλα έξοδα";
+        const mainOptions = cats.map((x) => x.name);
+        const safeMain = mainOptions.includes(expenseMainCategory) ? expenseMainCategory : firstMain;
+
+        const sub1Opts = getExpenseSub1Options(cats, safeMain);
+        const safeSub1 = sub1Opts.includes(expenseSubCategory) ? expenseSubCategory : (sub1Opts[0] || "");
+
+        const sub2Opts = getExpenseSub2Options(cats, safeMain, safeSub1);
+        const safeSub2 = sub2Opts.includes(expenseSubCategory2) ? expenseSubCategory2 : (sub2Opts[0] || "");
+
+        setExpenseMainCategory(safeMain);
+        setExpenseSubCategory(sub1Opts.length ? safeSub1 : "");
+        setExpenseSubCategory2(sub2Opts.length ? safeSub2 : "");
 
         // defaults για selects
         const firstNonCash = wallets.find((x) => x && x !== CASH_ACCOUNT) || wallets[0] || "Alpha Bank";
@@ -1132,6 +1291,103 @@ export default function HomePage() {
     }
   }
 
+  async function handleAddMainCategory() {
+  if (!user || !householdId) return;
+  const nm = String(newMainCat || "").trim();
+  if (!nm) return;
+
+  setBusy(true);
+  try {
+    const next = await addExpenseMainCategory({ householdId, uid: user.uid, name: nm });
+    if (!next) return;
+
+    setExpenseCategories(next);
+    setExpenseMainCategory(nm);
+
+    const sub1Opts = getExpenseSub1Options(next, nm);
+    const s1 = sub1Opts[0] || "";
+    setExpenseSubCategory(sub1Opts.length ? s1 : "");
+
+    const sub2Opts = getExpenseSub2Options(next, nm, s1);
+    const s2 = sub2Opts[0] || "";
+    setExpenseSubCategory2(sub2Opts.length ? s2 : "");
+
+    setNewMainCat("");
+    setAddMainCatOpen(false);
+  } catch (err) {
+    alert(firebaseErrorToGreek(err));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleAddSubCategory() {
+  if (!user || !householdId) return;
+  const nm = String(newSubCat || "").trim();
+  if (!nm) return;
+
+  const main = String(expenseMainCategory || "").trim();
+  if (!main) return alert("Διάλεξε πρώτα Κατηγορία.");
+
+  setBusy(true);
+  try {
+    const next = await addExpenseSubCategory({
+      householdId,
+      uid: user.uid,
+      mainName: main,
+      subName: nm,
+    });
+    if (!next) return;
+
+    setExpenseCategories(next);
+    setExpenseSubCategory(nm);
+
+    const sub2Opts = getExpenseSub2Options(next, main, nm);
+    const s2 = sub2Opts[0] || "";
+    setExpenseSubCategory2(sub2Opts.length ? s2 : "");
+
+    setNewSubCat("");
+    setAddSubCatOpen(false);
+  } catch (err) {
+    alert(firebaseErrorToGreek(err));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleAddOption() {
+  if (!user || !householdId) return;
+  const nm = String(newOpt || "").trim();
+  if (!nm) return;
+
+  const main = String(expenseMainCategory || "").trim();
+  const sub = String(expenseSubCategory || "").trim();
+  if (!main) return alert("Διάλεξε πρώτα Κατηγορία.");
+  if (!sub) return alert("Διάλεξε πρώτα Υποκατηγορία.");
+
+  setBusy(true);
+  try {
+    const next = await addExpenseOption({
+      householdId,
+      uid: user.uid,
+      mainName: main,
+      subName: sub,
+      optionName: nm,
+    });
+    if (!next) return;
+
+    setExpenseCategories(next);
+    setExpenseSubCategory2(nm);
+
+    setNewOpt("");
+    setAddOptOpen(false);
+  } catch (err) {
+    alert(firebaseErrorToGreek(err));
+  } finally {
+    setBusy(false);
+  }
+}
+
   function buildTxPayload() {
     const numericAmount = parseFloat(normalizeAmountInput(amount));
     if (!date) return { ok: false, message: "Συμπλήρωσε ημερομηνία." };
@@ -1248,14 +1504,14 @@ export default function HomePage() {
     const main = String(expenseMainCategory || "").trim();
     if (!main) return { ok: false, message: "Διάλεξε κατηγορία εξόδου." };
 
-    const sub1Options = getExpenseSub1Options(main);
+    const sub1Options = getExpenseSub1Options(expenseCategories, main);
     const sub1 = String(expenseSubCategory || "").trim();
 
     if (sub1Options.length > 0 && !sub1) {
       return { ok: false, message: "Διάλεξε υποκατηγορία." };
     }
 
-    const sub2Options = getExpenseSub2Options(main, sub1);
+    const sub2Options = getExpenseSub2Options(expenseCategories, main, sub1);
     const sub2 = String(expenseSubCategory2 || "").trim();
 
     if (sub2Options.length > 0 && !sub2) {
@@ -1263,12 +1519,12 @@ export default function HomePage() {
     }
 
     const otherText = String(expenseOtherText || "").trim();
-    const needsOther = isExpenseOtherSelection(main, sub1, sub2);
+    const needsOther = isExpenseOtherSelection(expenseCategories, main, sub1, sub2);
     if (needsOther && !otherText) {
       return { ok: false, message: 'Γράψε τι είναι το "Άλλα".' };
     }
 
-    const path = buildExpenseCategoryPath({
+    const path = buildExpenseCategoryPath(expenseCategories, {
       main,
       sub1: sub1Options.length ? sub1 : "",
       sub2: sub2Options.length ? sub2 : "",
@@ -2481,27 +2737,132 @@ export default function HomePage() {
                               const nextMain = e.target.value;
                               setExpenseMainCategory(nextMain);
 
-                              const sub1Opts = getExpenseSub1Options(nextMain);
+                              const sub1Opts = getExpenseSub1Options(expenseCategories, nextMain);
                               const nextSub1 = sub1Opts[0] || "";
                               setExpenseSubCategory(sub1Opts.length ? nextSub1 : "");
 
-                              const sub2Opts = getExpenseSub2Options(nextMain, nextSub1);
+                              const sub2Opts = getExpenseSub2Options(expenseCategories, nextMain, nextSub1);
                               const nextSub2 = sub2Opts[0] || "";
                               setExpenseSubCategory2(sub2Opts.length ? nextSub2 : "");
 
                               setExpenseOtherText("");
                             }}
                           >
-                            {EXPENSE_CATEGORY_TREE.map((m) => (
-                              <option key={m.name} value={m.name}>
-                                {m.name}
+                            {ensureInOptions(expenseCategories.map((x) => x.name), expenseMainCategory).map((name) => (
+                              <option key={name} value={name}>
+                                {name}
                               </option>
-                            ))}
+                            ))}                              
                           </select>
                         </div>
 
+                        <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="text-xs font-semibold text-slate-700">Διαχείριση κατηγοριών (μόνο για αυτό το νοικοκυριό)</div>
+
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAddMainCatOpen((v) => !v)}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              + Κατηγορία
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setAddSubCatOpen((v) => !v)}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              + Υποκατηγορία
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setAddOptOpen((v) => !v)}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              + Επιλογή (3ο επίπεδο)
+                            </button>
+                          </div>
+
+                          {addMainCatOpen && (
+                            <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                              <input
+                                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                                placeholder='π.χ. "Εκπαίδευση"'
+                                value={newMainCat}
+                                onChange={(e) => setNewMainCat(e.target.value)}
+                              />
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={handleAddMainCategory}
+                                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                              >
+                                {busy ? "..." : "Αποθήκευση"}
+                              </button>
+                            </div>
+                          )}
+
+                          {addSubCatOpen && (
+                            <div className="mt-2">
+                              <div className="text-[11px] text-slate-500 mb-1">
+                                Θα προστεθεί κάτω από: <b>{expenseMainCategory || "—"}</b>
+                              </div>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <input
+                                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                                  placeholder='π.χ. "Μαθήματα"'
+                                  value={newSubCat}
+                                  onChange={(e) => setNewSubCat(e.target.value)}
+                                />
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={handleAddSubCategory}
+                                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                                >
+                                  {busy ? "..." : "Αποθήκευση"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => setAddOptOpen((v) => !v)}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          >
+                            DEBUG: toggle addOptOpen
+                          </button>
+
+                          {addOptOpen && (
+                            <div className="mt-2">
+                              <div className="text-[11px] text-slate-500 mb-1">
+                                Θα προστεθεί κάτω από: <b>{expenseMainCategory || "—"}</b> / <b>{expenseSubCategory || "—"}</b>
+                              </div>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <input
+                                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                                  placeholder='π.χ. "Ιδιαίτερα"'
+                                  value={newOpt}
+                                  onChange={(e) => setNewOpt(e.target.value)}
+                                />
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={handleAddOption}
+                                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                                >
+                                  {busy ? "..." : "Αποθήκευση"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         {(() => {
-                          const sub1Opts = getExpenseSub1Options(expenseMainCategory);
+                          const sub1Opts = ensureInOptions(getExpenseSub1Options(expenseCategories, expenseMainCategory), expenseSubCategory);
                           if (!sub1Opts.length) return null;
 
                           return (
@@ -2514,7 +2875,7 @@ export default function HomePage() {
                                   const nextSub1 = e.target.value;
                                   setExpenseSubCategory(nextSub1);
 
-                                  const sub2Opts = getExpenseSub2Options(expenseMainCategory, nextSub1);
+                                  const sub2Opts = getExpenseSub2Options(expenseCategories, expenseMainCategory, nextSub1);
                                   const nextSub2 = sub2Opts[0] || "";
                                   setExpenseSubCategory2(sub2Opts.length ? nextSub2 : "");
 
@@ -2532,9 +2893,11 @@ export default function HomePage() {
                         })()}
 
                         {(() => {
-                          const sub2Opts = getExpenseSub2Options(expenseMainCategory, expenseSubCategory);
+                          const sub2Opts = ensureInOptions(
+                            getExpenseSub2Options(expenseCategories, expenseMainCategory, expenseSubCategory),
+                            expenseSubCategory2
+                          );
                           if (!sub2Opts.length) return null;
-
                           return (
                             <div className="flex flex-col gap-1">
                               <label className="text-sm font-medium text-slate-700">Επιλογή</label>
@@ -2556,7 +2919,7 @@ export default function HomePage() {
                           );
                         })()}
 
-                        {isExpenseOtherSelection(expenseMainCategory, expenseSubCategory, expenseSubCategory2) && (
+                        {isExpenseOtherSelection(expenseCategories, expenseMainCategory, expenseSubCategory, expenseSubCategory2) && (
                           <div className="flex flex-col gap-1">
                             <label className="text-sm font-medium text-slate-700">Άλλα</label>
                             <input
