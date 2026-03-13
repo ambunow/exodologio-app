@@ -2828,14 +2828,7 @@ async function handleAddOption() {
                             </div>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={() => setAddOptOpen((v) => !v)}
-                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                          >
-                            DEBUG: toggle addOptOpen
-                          </button>
-
+                          
                           {addOptOpen && (
                             <div className="mt-2">
                               <div className="text-[11px] text-slate-500 mb-1">
