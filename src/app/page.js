@@ -2752,106 +2752,8 @@ async function handleAddOption() {
                               <option key={name} value={name}>
                                 {name}
                               </option>
-                            ))}                              
+                            ))}
                           </select>
-                        </div>
-
-                        <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                          <div className="text-xs font-semibold text-slate-700">Διαχείριση κατηγοριών (μόνο για αυτό το νοικοκυριό)</div>
-
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setAddMainCatOpen((v) => !v)}
-                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              + Κατηγορία
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setAddSubCatOpen((v) => !v)}
-                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              + Υποκατηγορία
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setAddOptOpen((v) => !v)}
-                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              + Επιλογή (3ο επίπεδο)
-                            </button>
-                          </div>
-
-                          {addMainCatOpen && (
-                            <div className="mt-2 flex flex-col sm:flex-row gap-2">
-                              <input
-                                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                                placeholder='π.χ. "Εκπαίδευση"'
-                                value={newMainCat}
-                                onChange={(e) => setNewMainCat(e.target.value)}
-                              />
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={handleAddMainCategory}
-                                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                              >
-                                {busy ? "..." : "Αποθήκευση"}
-                              </button>
-                            </div>
-                          )}
-
-                          {addSubCatOpen && (
-                            <div className="mt-2">
-                              <div className="text-[11px] text-slate-500 mb-1">
-                                Θα προστεθεί κάτω από: <b>{expenseMainCategory || "—"}</b>
-                              </div>
-                              <div className="flex flex-col sm:flex-row gap-2">
-                                <input
-                                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                                  placeholder='π.χ. "Μαθήματα"'
-                                  value={newSubCat}
-                                  onChange={(e) => setNewSubCat(e.target.value)}
-                                />
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={handleAddSubCategory}
-                                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                                >
-                                  {busy ? "..." : "Αποθήκευση"}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          
-                          {addOptOpen && (
-                            <div className="mt-2">
-                              <div className="text-[11px] text-slate-500 mb-1">
-                                Θα προστεθεί κάτω από: <b>{expenseMainCategory || "—"}</b> / <b>{expenseSubCategory || "—"}</b>
-                              </div>
-                              <div className="flex flex-col sm:flex-row gap-2">
-                                <input
-                                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                                  placeholder='π.χ. "Ιδιαίτερα"'
-                                  value={newOpt}
-                                  onChange={(e) => setNewOpt(e.target.value)}
-                                />
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={handleAddOption}
-                                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                                >
-                                  {busy ? "..." : "Αποθήκευση"}
-                                </button>
-                              </div>
-                            </div>
-                          )}
                         </div>
 
                         {(() => {
@@ -2921,6 +2823,103 @@ async function handleAddOption() {
                               value={expenseOtherText}
                               onChange={(e) => setExpenseOtherText(e.target.value)}
                             />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl bg-white/85 border border-rose-200 p-3 shadow-sm flex flex-col gap-3 md:col-span-2">
+                        <div className="text-xs font-semibold text-slate-700">Διαχείριση κατηγοριών (μόνο για αυτό το νοικοκυριό)</div>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddMainCatOpen((v) => !v)}
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            + Κατηγορία
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setAddSubCatOpen((v) => !v)}
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            + Υποκατηγορία
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setAddOptOpen((v) => !v)}
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            + Επιλογή (3ο επίπεδο)
+                          </button>
+                        </div>
+
+                        {addMainCatOpen && (
+                          <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                            <input
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                              placeholder='π.χ. "Εκπαίδευση"'
+                              value={newMainCat}
+                              onChange={(e) => setNewMainCat(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={handleAddMainCategory}
+                              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                            >
+                              {busy ? "..." : "Αποθήκευση"}
+                            </button>
+                          </div>
+                        )}
+
+                        {addSubCatOpen && (
+                          <div className="mt-2">
+                            <div className="text-[11px] text-slate-500 mb-1">
+                              Θα προστεθεί κάτω από: <b>{expenseMainCategory || "—"}</b>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input
+                                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                                placeholder='π.χ. "Μαθήματα"'
+                                value={newSubCat}
+                                onChange={(e) => setNewSubCat(e.target.value)}
+                              />
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={handleAddSubCategory}
+                                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                              >
+                                {busy ? "..." : "Αποθήκευση"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {addOptOpen && (
+                          <div className="mt-2">
+                            <div className="text-[11px] text-slate-500 mb-1">
+                              Θα προστεθεί κάτω από: <b>{expenseMainCategory || "—"}</b> / <b>{expenseSubCategory || "—"}</b>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input
+                                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                                placeholder='π.χ. "Ιδιαίτερα"'
+                                value={newOpt}
+                                onChange={(e) => setNewOpt(e.target.value)}
+                              />
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={handleAddOption}
+                                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                              >
+                                {busy ? "..." : "Αποθήκευση"}
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
