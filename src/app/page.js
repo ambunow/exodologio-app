@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { auth, db } from "../lib/firebase";
 import {
@@ -224,6 +224,22 @@ const INCOME_SOURCES = [
 function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
+
+function getCurrentTimeHHMM() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function getTxDateTimeValue(t) {
+  const d = String(t?.date || "");
+  const tm = String(t?.time || "").trim();
+  return `${d} ${tm || "00:00"}`;
+}
+
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
 function isIOS() {
   if (typeof window === "undefined") return false;
@@ -682,7 +698,7 @@ async function addExpenseMainCategory({ householdId, uid, name }) {
     uid,
     updater: (tree) => {
       if (tree.some((x) => x.name === nm)) return tree;
-      const node = { name: nm, items: [{ name: "Άλλα", other: true }] };
+      const node = { name: nm, items: [] };
       return insertBeforeOther(tree, node);
     },
   });
@@ -704,7 +720,7 @@ async function addExpenseSubCategory({ householdId, uid, mainName, subName }) {
       const items = Array.isArray(mainNode.items) ? mainNode.items : [];
       if (items.some((x) => x.name === sub)) return next;
 
-      const subNode = { name: sub, items: [{ name: "Άλλα", other: true }] };
+      const subNode = { name: sub, items: [] };
       mainNode.items = insertBeforeOther(items, subNode);
       return next;
     },
@@ -742,6 +758,67 @@ async function addExpenseOption({ householdId, uid, mainName, subName, optionNam
     },
   });
 }
+
+async function deleteExpenseMainCategory({ householdId, uid, mainName }) {
+  const main = String(mainName || "").trim();
+  if (!main) return null;
+
+  return updateExpenseCategories({
+    householdId,
+    uid,
+    updater: (tree) => {
+      return (tree || []).filter((x) => x.name !== main);
+    },
+  });
+}
+
+async function deleteExpenseSubCategory({ householdId, uid, mainName, subName }) {
+  const main = String(mainName || "").trim();
+  const sub = String(subName || "").trim();
+  if (!main || !sub) return null;
+
+  return updateExpenseCategories({
+    householdId,
+    uid,
+    updater: (tree) => {
+      return (tree || []).map((m) => {
+        if (m.name !== main) return m;
+        const items = Array.isArray(m.items) ? m.items.filter((x) => x.name !== sub) : [];
+        return { ...m, items };
+      });
+    },
+  });
+}
+
+async function deleteExpenseOption({ householdId, uid, mainName, subName, optionName }) {
+  const main = String(mainName || "").trim();
+  const sub = String(subName || "").trim();
+  const opt = String(optionName || "").trim();
+  if (!main || !sub || !opt) return null;
+
+  return updateExpenseCategories({
+    householdId,
+    uid,
+    updater: (tree) => {
+      return (tree || []).map((m) => {
+        if (m.name !== main) return m;
+
+        const items = Array.isArray(m.items)
+          ? m.items.map((s1) => {
+              if (s1.name !== sub) return s1;
+              const subItems = Array.isArray(s1.items) ? s1.items.filter((x) => x.name !== opt) : [];
+              const cleanedSubItems =
+                subItems.length === 1 && subItems[0]?.other ? [] : subItems;
+              return { ...s1, items: cleanedSubItems };
+            })
+          : [];
+
+        return { ...m, items };
+      });
+    },
+  });
+}
+
 
 /** =========================
  *  MAIN PAGE
@@ -793,14 +870,30 @@ export default function HomePage() {
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
 
+  const [summaryViewMode, setSummaryViewMode] = useState("period");
+  const [txTypeFilter, setTxTypeFilter] = useState("all");
+
   // transactions
   const [transactions, setTransactions] = useState([]);
 
   // tx form
   const [editingId, setEditingId] = useState(null);
   const [date, setDate] = useState(getToday());
+  const [time, setTime] = useState(getCurrentTimeHHMM());
   const [type, setType] = useState("expense"); // income | expense | transfer
   const [amount, setAmount] = useState("");
+
+  const [timeHour, timeMinute] = String(time || "00:00").split(":");
+
+  function updateTimeHour(nextHour) {
+    const mm = String(timeMinute || "00").padStart(2, "0");
+    setTime(`${String(nextHour).padStart(2, "0")}:${mm}`);
+  }
+
+  function updateTimeMinute(nextMinute) {
+    const hh = String(timeHour || "00").padStart(2, "0");
+    setTime(`${hh}:${String(nextMinute).padStart(2, "0")}`);
+  }
 
   // expense fields
   const [expenseMainCategory, setExpenseMainCategory] = useState("Ψώνια");
@@ -834,6 +927,13 @@ export default function HomePage() {
 
   const [addOptOpen, setAddOptOpen] = useState(false);
   const [newOpt, setNewOpt] = useState("");
+
+  const [deleteMainCatOpen, setDeleteMainCatOpen] = useState(false);
+  const [deleteSubCatOpen, setDeleteSubCatOpen] = useState(false);
+  const [deleteOptOpen, setDeleteOptOpen] = useState(false);
+
+  const dateInputRef = useRef(null);
+
 
   // ✅ invite link auto-fill (?invite=...)
   useEffect(() => {
@@ -951,7 +1051,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!user || !householdId) return;
 
-    const q2 = query(collection(db, "households", householdId, "transactions"), orderBy("createdAt", "desc"));
+    const q2 = query(collection(db, "households", householdId, "transactions"));
     const unsub = onSnapshot(
       q2,
       (snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -1004,6 +1104,7 @@ export default function HomePage() {
 
     setEditingId(null);
     setDate(getToday());
+    setTime(getCurrentTimeHHMM());
     setType("expense");
     setAmount("");
 
@@ -1388,6 +1489,124 @@ async function handleAddOption() {
   }
 }
 
+async function handleDeleteMainCategory() {
+  if (!user || !householdId) return;
+
+  const main = String(expenseMainCategory || "").trim();
+  if (!main) return alert("Διάλεξε πρώτα Κατηγορία.");
+
+  if (!confirm(`Να διαγραφεί η κατηγορία "${main}";`)) return;
+
+  setBusy(true);
+  try {
+    const next = await deleteExpenseMainCategory({
+      householdId,
+      uid: user.uid,
+      mainName: main,
+    });
+    if (!next) return;
+
+    setExpenseCategories(next);
+
+    const nextMain = next[0]?.name || "";
+    setExpenseMainCategory(nextMain);
+
+    const sub1Opts = getExpenseSub1Options(next, nextMain);
+    const nextSub1 = sub1Opts[0] || "";
+    setExpenseSubCategory(sub1Opts.length ? nextSub1 : "");
+
+    const sub2Opts = getExpenseSub2Options(next, nextMain, nextSub1);
+    const nextSub2 = sub2Opts[0] || "";
+    setExpenseSubCategory2(sub2Opts.length ? nextSub2 : "");
+
+    setExpenseOtherText("");
+    setDeleteMainCatOpen(false);
+  } catch (err) {
+    alert(firebaseErrorToGreek(err));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleDeleteSubCategory() {
+  if (!user || !householdId) return;
+
+  const main = String(expenseMainCategory || "").trim();
+  const sub = String(expenseSubCategory || "").trim();
+  if (!main) return alert("Διάλεξε πρώτα Κατηγορία.");
+  if (!sub) return alert("Διάλεξε πρώτα Υποκατηγορία.");
+
+  if (!confirm(`Να διαγραφεί η υποκατηγορία "${sub}";`)) return;
+
+  setBusy(true);
+  try {
+    const next = await deleteExpenseSubCategory({
+      householdId,
+      uid: user.uid,
+      mainName: main,
+      subName: sub,
+    });
+    if (!next) return;
+
+    setExpenseCategories(next);
+
+    const sub1Opts = getExpenseSub1Options(next, main);
+    const nextSub1 = sub1Opts[0] || "";
+    setExpenseSubCategory(sub1Opts.length ? nextSub1 : "");
+
+    const sub2Opts = getExpenseSub2Options(next, main, nextSub1);
+    const nextSub2 = sub2Opts[0] || "";
+    setExpenseSubCategory2(sub2Opts.length ? nextSub2 : "");
+
+    setExpenseOtherText("");
+    setDeleteSubCatOpen(false);
+  } catch (err) {
+    alert(firebaseErrorToGreek(err));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleDeleteOption() {
+  if (!user || !householdId) return;
+
+  const main = String(expenseMainCategory || "").trim();
+  const sub = String(expenseSubCategory || "").trim();
+  const opt = String(expenseSubCategory2 || "").trim();
+
+  if (!main) return alert("Διάλεξε πρώτα Κατηγορία.");
+  if (!sub) return alert("Διάλεξε πρώτα Υποκατηγορία.");
+  if (!opt) return alert("Διάλεξε πρώτα Επιλογή.");
+
+  if (!confirm(`Να διαγραφεί η επιλογή "${opt}";`)) return;
+
+  setBusy(true);
+  try {
+    const next = await deleteExpenseOption({
+      householdId,
+      uid: user.uid,
+      mainName: main,
+      subName: sub,
+      optionName: opt,
+    });
+    if (!next) return;
+
+    setExpenseCategories(next);
+
+    const sub2Opts = getExpenseSub2Options(next, main, sub);
+    const nextSub2 = sub2Opts[0] || "";
+    setExpenseSubCategory2(sub2Opts.length ? nextSub2 : "");
+
+    setExpenseOtherText("");
+    setDeleteOptOpen(false);
+  } catch (err) {
+    alert(firebaseErrorToGreek(err));
+  } finally {
+    setBusy(false);
+  }
+}
+
+
   function buildTxPayload() {
     const numericAmount = parseFloat(normalizeAmountInput(amount));
     if (!date) return { ok: false, message: "Συμπλήρωσε ημερομηνία." };
@@ -1416,6 +1635,7 @@ async function handleAddOption() {
         ok: true,
         payload: {
           date,
+          time: String(time || "").trim() || getCurrentTimeHHMM(),
           month: asYYYYMM(date),
           type: "transfer",
           amount: numericAmount,
@@ -1465,6 +1685,7 @@ async function handleAddOption() {
         ok: true,
         payload: {
           date,
+          time: String(time || "").trim() || getCurrentTimeHHMM(),
           month: asYYYYMM(date),
           type: "income",
           amount: numericAmount,
@@ -1515,7 +1736,7 @@ async function handleAddOption() {
     const sub2 = String(expenseSubCategory2 || "").trim();
 
     if (sub2Options.length > 0 && !sub2) {
-      return { ok: false, message: "Διάλεξε επιλογή (3ο επίπεδο)." };
+      return { ok: false, message: "Διάλεξε Υπό-Υποκατηγορία." };
     }
 
     const otherText = String(expenseOtherText || "").trim();
@@ -1539,6 +1760,7 @@ async function handleAddOption() {
       ok: true,
       payload: {
         date,
+        time: String(time || "").trim() || getCurrentTimeHHMM(),
         month: asYYYYMM(date),
         type: "expense",
         amount: numericAmount,
@@ -1612,6 +1834,19 @@ async function handleAddOption() {
     setType(txType);
 
     setDate(t.date || getToday());
+    setTime(
+      String(t.time || "").trim() ||
+        (() => {
+          const raw = t?.createdAt;
+          if (raw?.seconds) {
+            const d = new Date(raw.seconds * 1000);
+            const hh = String(d.getHours()).padStart(2, "0");
+            const mm = String(d.getMinutes()).padStart(2, "0");
+            return `${hh}:${mm}`;
+          }
+          return getCurrentTimeHHMM();
+        })()
+    );
     setAmount(String(t.amount ?? ""));
 
     const wallets = normalizeWallets(bankWallets);
@@ -1660,11 +1895,11 @@ async function handleAddOption() {
       const main = String(t.expenseMainCategory || t.category || "Ψώνια").trim();
       setExpenseMainCategory(main);
 
-      const sub1Options = getExpenseSub1Options(main);
+      const sub1Options = getExpenseSub1Options(expenseCategories, main);
       const nextSub1 = String(t.expenseSubCategory || sub1Options[0] || "").trim();
       setExpenseSubCategory(sub1Options.length ? nextSub1 : "");
 
-      const sub2Options = getExpenseSub2Options(main, nextSub1);
+      const sub2Options = getExpenseSub2Options(expenseCategories, main, nextSub1);
       const nextSub2 = String(t.expenseSubCategory2 || sub2Options[0] || "").trim();
       setExpenseSubCategory2(sub2Options.length ? nextSub2 : "");
 
@@ -1686,6 +1921,10 @@ async function handleAddOption() {
 
     setNotes(t.notes || "");
     window.scrollTo({ top: 0, behavior: "smooth" });
+
+    setTimeout(() => {
+      dateInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });     
+    }, 250);
   }
 
   async function handleDelete(id) {
@@ -1712,33 +1951,115 @@ async function handleAddOption() {
     return months;
   }, [transactions, selectedMonth]);
 
-  const filteredTransactions = useMemo(() => {
+  const summaryTransactions = useMemo(() => {
+    if (summaryViewMode === "all") {
+      return transactions;
+    }
+
     if (filterMode === "range") {
       const start = rangeStart || "";
       const end = rangeEnd || "";
       return transactions.filter((t) => inRange(t?.date, start, end));
     }
+
     return transactions.filter((t) => t?.date && String(t.date).startsWith(selectedMonth));
-  }, [transactions, selectedMonth, filterMode, rangeStart, rangeEnd]);
+  }, [transactions, selectedMonth, filterMode, rangeStart, rangeEnd, summaryViewMode]);
+
+  const filteredTransactions = useMemo(() => {
+    let rows;
+
+    if (summaryViewMode === "all") {
+      rows = transactions;
+    } else if (filterMode === "range") {
+      const start = rangeStart || "";
+      const end = rangeEnd || "";
+      rows = transactions.filter((t) => inRange(t?.date, start, end));
+    } else {
+      rows = transactions.filter((t) => t?.date && String(t.date).startsWith(selectedMonth));
+    }
+
+    if (txTypeFilter !== "all") {
+      rows = rows.filter((t) => t.type === txTypeFilter);
+    }
+
+    return [...rows].sort((a, b) => {
+      const av = getTxDateTimeValue(a);
+      const bv = getTxDateTimeValue(b);
+      return bv.localeCompare(av);
+    });
+  }, [transactions, selectedMonth, filterMode, rangeStart, rangeEnd, txTypeFilter, summaryViewMode]);
 
   const { incomeTotal, expenseTotal, netTotal } = useMemo(() => {
-    let income = 0;
-    let expense = 0;
-    filteredTransactions.forEach((t) => {
+    let totalIncomeAll = 0;
+    let totalExpenseAll = 0;
+
+    transactions.forEach((t) => {
       const amt = Number(t.amount || 0);
-      if (t.type === "income") income += amt;
-      else if (t.type === "expense") expense += amt;
-      // transfer: δεν μετράει
+      if (t.type === "income") totalIncomeAll += amt;
+      else if (t.type === "expense") totalExpenseAll += amt;
     });
-    return { incomeTotal: income, expenseTotal: expense, netTotal: income - expense };
-  }, [filteredTransactions]);
+
+    if (summaryViewMode === "all") {
+      return {
+        incomeTotal: totalIncomeAll,
+        expenseTotal: totalExpenseAll,
+        netTotal: totalIncomeAll - totalExpenseAll,
+      };
+    }
+
+    let periodIncome = 0;
+    let periodExpense = 0;
+
+    summaryTransactions.forEach((t) => {
+      const amt = Number(t.amount || 0);
+      if (t.type === "income") periodIncome += amt;
+      else if (t.type === "expense") periodExpense += amt;
+    });
+
+    let carryOverBalance = 0;
+
+    if (filterMode === "month") {
+      const monthStart = `${selectedMonth}-01`;
+
+      transactions.forEach((t) => {
+        const amt = Number(t.amount || 0);
+        if (!t?.date || t.date >= monthStart) return;
+
+        if (t.type === "income") carryOverBalance += amt;
+        else if (t.type === "expense") carryOverBalance -= amt;
+      });
+    } else {
+      const start = rangeStart || "";
+
+      if (start) {
+        transactions.forEach((t) => {
+          const amt = Number(t.amount || 0);
+          if (!t?.date || t.date >= start) return;
+
+          if (t.type === "income") carryOverBalance += amt;
+          else if (t.type === "expense") carryOverBalance -= amt;
+        });
+      }
+    }
+
+    return {
+      incomeTotal: carryOverBalance + periodIncome,
+      expenseTotal: periodExpense,
+      netTotal: carryOverBalance + periodIncome - periodExpense,
+    };
+  }, [summaryTransactions, transactions, filterMode, selectedMonth, rangeStart, summaryViewMode]);
 
   function humanMonthOrRangeTitle() {
+    if (summaryViewMode === "all") {
+      return "Συνολικά από την έναρξη";
+    }
+
     if (filterMode === "range") {
       const s = rangeStart || "…";
       const e = rangeEnd || "…";
       return `Εύρος: ${s} → ${e}`;
     }
+
     return `Μήνας: ${getMonthLabel(selectedMonth)}`;
   }
 
@@ -1826,6 +2147,7 @@ async function handleAddOption() {
 
           return {
             date: t.date || "",
+            time: t.time || "",
             type: "income",
             amount: t.amount ?? "",
             income_source: src,
@@ -1843,6 +2165,7 @@ async function handleAddOption() {
         if (t.type === "transfer") {
           return {
             date: t.date || "",
+            time: t.time || "",
             type: "transfer",
             amount: t.amount ?? "",
             income_source: "",
@@ -1860,6 +2183,7 @@ async function handleAddOption() {
         const pm = t.expensePaymentMethod || t.paymentMethod || "";
         return {
           date: t.date || "",
+          time: t.time || "",
           type: "expense",
           amount: t.amount ?? "",
           income_source: "",
@@ -1909,6 +2233,7 @@ async function handleAddOption() {
 
     const greekHeader = [
       "Ημερομηνία",
+      "Ώρα",
       "Τύπος",
       "Ποσό (€)",
       "Πηγή εσόδου",
@@ -1926,6 +2251,7 @@ async function handleAddOption() {
       greekHeader,
       ...rows.map((r) => [
         r.date,
+        r.time || "",
         r.type === "income" ? "Έσοδο" : r.type === "expense" ? "Έξοδο" : "Μεταφορά",
         r.amount === "" ? "" : toNum(r.amount),
         r.income_source,
@@ -1943,21 +2269,22 @@ async function handleAddOption() {
     const wsMoves = XLSX.utils.aoa_to_sheet(aoaMoves);
 
     wsMoves["!cols"] = [
-      { wch: 12 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 24 },
-      { wch: 22 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 22 },
-      { wch: 26 },
-      { wch: 24 },
-      { wch: 22 },
-      { wch: 45 },
+      { wch: 12 }, // Ημερομηνία
+      { wch: 8 },  // Ώρα
+      { wch: 10 }, // Τύπος
+      { wch: 10 }, // Ποσό
+      { wch: 24 }, // Πηγή εσόδου
+      { wch: 22 }, // Τρόπος λήψης
+      { wch: 18 }, // Από
+      { wch: 18 }, // Προς
+      { wch: 22 }, // Τρόπος πληρωμής
+      { wch: 26 }, // Τράπεζα/Πορτοφόλι
+      { wch: 24 }, // Κατηγορία
+      { wch: 22 }, // Άλλη κατηγορία
+      { wch: 45 }, // Σχόλια
     ];
 
-    wsMoves["!autofilter"] = { ref: "A1:L1" };
+    wsMoves["!autofilter"] = { ref: "A1:M1" };
     wsMoves["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", state: "frozen" };
 
     const wsSummary = XLSX.utils.aoa_to_sheet([
@@ -2322,6 +2649,86 @@ async function handleAddOption() {
                     </button>
                   </div>
 
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700">Προβολή συνόψεων:</span>
+
+                    <button
+                      type="button"
+                      onClick={() => setSummaryViewMode("period")}
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold border transition ${
+                        summaryViewMode === "period"
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      Περίοδος
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSummaryViewMode("all")}
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold border transition ${
+                        summaryViewMode === "all"
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      Συνολικά
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700">Φίλτρο κινήσεων:</span>
+
+                    <button
+                      type="button"
+                      onClick={() => setTxTypeFilter("all")}
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold border transition ${
+                        txTypeFilter === "all"
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      Όλα
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTxTypeFilter("income")}
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold border transition ${
+                        txTypeFilter === "income"
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      Μόνο Έσοδα
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTxTypeFilter("expense")}
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold border transition ${
+                        txTypeFilter === "expense"
+                          ? "bg-rose-600 text-white border-rose-600"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      Μόνο Έξοδα
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTxTypeFilter("transfer")}
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold border transition ${
+                        txTypeFilter === "transfer"
+                          ? "bg-sky-700 text-white border-sky-700"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      Μόνο Μεταφορές
+                    </button>
+                  </div>
+
                   {filterMode === "month" ? (
                     <div className="flex items-center gap-2">
                       <label htmlFor="month" className="text-sm font-medium whitespace-nowrap">
@@ -2430,17 +2837,57 @@ async function handleAddOption() {
                 <form onSubmit={handleSaveTransaction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {/* Ημερομηνία */}
                   <div
-                    className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-1 ${
+                    className={`rounded-2xl bg-white/85 border p-3 shadow-sm flex flex-col gap-3 ${
                       type === "income" ? "border-emerald-200" : type === "transfer" ? "border-sky-200" : "border-rose-200"
                     }`}
                   >
-                    <label className="text-sm font-medium text-slate-700">Ημερομηνία</label>
-                    <input
-                      type="date"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                    />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-medium text-slate-700">Ημερομηνία συναλλαγής</label>
+                      <input
+                        ref={dateInputRef}
+                        type="date"
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                        <span>🕒</span>
+                        <span>Ώρα συναλλαγής</span>
+                      </label>
+
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                        <select
+                          className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                          value={timeHour || "00"}
+                          onChange={(e) => updateTimeHour(e.target.value)}
+                        >
+                          {HOUR_OPTIONS.map((hh) => (
+                            <option key={hh} value={hh}>
+                              {hh}
+                            </option>
+                          ))}
+                        </select>
+
+                        <span className="text-sm font-semibold text-slate-500">:</span>
+
+                        <select
+                          className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                          value={timeMinute || "00"}
+                          onChange={(e) => updateTimeMinute(e.target.value)}
+                        >
+                          {MINUTE_OPTIONS.map((mm) => (
+                            <option key={mm} value={mm}>
+                              {mm}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <p className="text-[11px] text-slate-500">Μορφή 24ώρου (HH:MM)</p>
+                    </div>
                   </div>
 
                   {/* Τύπος */}
@@ -2814,7 +3261,15 @@ async function handleAddOption() {
                           );
                         })()}
 
-                        {isExpenseOtherSelection(expenseCategories, expenseMainCategory, expenseSubCategory, expenseSubCategory2) && (
+                        {!addMainCatOpen &&
+                        !addSubCatOpen &&
+                        !addOptOpen &&
+                        isExpenseOtherSelection(
+                          expenseCategories,
+                          expenseMainCategory,
+                          expenseSubCategory,
+                          expenseSubCategory2
+                        ) && (
                           <div className="flex flex-col gap-1">
                             <label className="text-sm font-medium text-slate-700">Άλλα</label>
                             <input
@@ -2824,11 +3279,16 @@ async function handleAddOption() {
                               onChange={(e) => setExpenseOtherText(e.target.value)}
                             />
                           </div>
-                        )}
-                      </div>
+                      )}
 
+                      </div>
+                         
                       <div className="rounded-2xl bg-white/85 border border-rose-200 p-3 shadow-sm flex flex-col gap-3 md:col-span-2">
                         <div className="text-xs font-semibold text-slate-700">Διαχείριση κατηγοριών (μόνο για αυτό το νοικοκυριό)</div>
+
+                        <div className="mt-2 text-xs font-medium text-slate-600">
+                          Για την προσθήκη Κατηγορίας/Υποκατηγορίας/Υπό-Υποκατηγορίας
+                        </div>
 
                         <div className="mt-2 flex flex-wrap gap-2">
                           <button
@@ -2852,9 +3312,93 @@ async function handleAddOption() {
                             onClick={() => setAddOptOpen((v) => !v)}
                             className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                           >
-                            + Επιλογή (3ο επίπεδο)
+                            + Υπό-Υποκατηγορία
                           </button>
                         </div>
+
+                        <div className="mt-3 text-xs font-medium text-slate-600">
+                          Για τη διαγραφή Κατηγορίας/Υποκατηγορίας/Υπό-Υποκατηγορίας
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDeleteMainCatOpen((v) => !v)}
+                            className="rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            - Κατηγορία
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setDeleteSubCatOpen((v) => !v)}
+                            className="rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            - Υποκατηγορία
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setDeleteOptOpen((v) => !v)}
+                            className="rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            - Υπό-Υποκατηγορία
+                          </button>
+                        </div>
+
+                        {deleteMainCatOpen && (
+                          <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                            <input
+                              className="flex-1 rounded-xl border border-red-200 px-3 py-2 text-sm bg-white"
+                              value={expenseMainCategory || ""}
+                              readOnly
+                            />
+                            <button
+                              type="button"
+                              disabled={busy || !expenseMainCategory}
+                              onClick={handleDeleteMainCategory}
+                              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                            >
+                              {busy ? "..." : "Διαγραφή"}
+                            </button>
+                          </div>
+                        )}
+
+                        {deleteSubCatOpen && (
+                          <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                            <input
+                              className="flex-1 rounded-xl border border-red-200 px-3 py-2 text-sm bg-white"
+                              value={expenseSubCategory || ""}
+                              readOnly
+                            />
+                            <button
+                              type="button"
+                              disabled={busy || !expenseSubCategory}
+                              onClick={handleDeleteSubCategory}
+                              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                            >
+                              {busy ? "..." : "Διαγραφή"}
+                            </button>
+                          </div>
+                        )}
+
+                        {deleteOptOpen && (
+                          <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                            <input
+                              className="flex-1 rounded-xl border border-red-200 px-3 py-2 text-sm bg-white"
+                              value={expenseSubCategory2 || ""}
+                              readOnly
+                            />
+                            <button
+                              type="button"
+                              disabled={busy || !expenseSubCategory2}
+                              onClick={handleDeleteOption}
+                              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                            >
+                              {busy ? "..." : "Διαγραφή"}
+                            </button>
+                          </div>
+                        )}
 
                         {addMainCatOpen && (
                           <div className="mt-2 flex flex-col sm:flex-row gap-2">
@@ -3013,7 +3557,7 @@ async function handleAddOption() {
                         )}
                       </div>
                     </>
-                  )}
+                  )} 
 
                   {/* Σχόλια */}
                   <div
@@ -3079,8 +3623,10 @@ async function handleAddOption() {
 
                     return (
                       <div key={t.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-semibold truncate">{txTitle(t)}</div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="font-semibold break-words whitespace-normal flex-1 min-w-0">
+                            {txTitle(t)}
+                          </div>
                           <div
                             className={`shrink-0 font-extrabold ${
                               isIncome ? "text-emerald-700" : isExpense ? "text-rose-700" : "text-sky-700"
@@ -3092,7 +3638,10 @@ async function handleAddOption() {
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2 mt-1">
-                          <span>{t.date}</span>
+                          <span>
+                            {t.date}
+                            {t.time ? ` • ${t.time}` : ""}
+                          </span>
                           <span>{txMethodLine(t)}</span>
                         </div>
 
