@@ -2943,14 +2943,28 @@ async function handleDeleteOption() {
                     <div className="relative">
                       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">€</span>
                       <input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
                         inputMode="decimal"
+                        autoComplete="off"
                         className="w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                        placeholder="0.00"
+                        placeholder="0,00"
                         value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
+                        onChange={(e) => {
+                          let v = e.target.value;
+
+                          // επιτρέπουμε μόνο ψηφία, κόμμα και τελεία
+                          v = v.replace(/[^\d.,]/g, "");
+
+                          // επιτρέπουμε μόνο έναν δεκαδικό διαχωριστή συνολικά
+                          const firstSepIndex = Math.max(v.indexOf(","), v.indexOf("."));
+                          if (firstSepIndex !== -1) {
+                            const head = v.slice(0, firstSepIndex + 1);
+                            const tail = v.slice(firstSepIndex + 1).replace(/[.,]/g, "");
+                            v = head + tail;
+                          }
+
+                          setAmount(v);
+                        }}
                       />
                     </div>
                     <p className="text-[11px] text-slate-500">Υποχρεωτικό πεδίο.</p>
